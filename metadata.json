@@ -1,5 +1,5 @@
 {
-  "name": "final dashboard",
+  "name": "StudyDash",
   "description": "A comprehensive, fully responsive React dashboard for students to manage studies, habits, resources, todos, and analytics. Features persistent local storage, data visualization, and PDF exports.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
