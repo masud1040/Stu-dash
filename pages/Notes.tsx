@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
+import { fetchCloudData, saveCloudData } from '../src/lib/dbSync';
 
 interface Note {
   id: string;
@@ -34,29 +35,36 @@ const Notes: React.FC = () => {
   const [pageCount, setPageCount] = useState<number>(1);
   const [selectedFont, setSelectedFont] = useState<string>("'Hind Siliguri', 'Noto Sans Bengali', sans-serif");
 
-  // --- Initial Load & Local Storage Sync ---
+  // --- Initial Load & Cloud Sync ---
   useEffect(() => {
-    const saved = localStorage.getItem('notes');
-    if (saved) {
-      try {
-        setNotes(JSON.parse(saved));
-      } catch (e) {
-        console.error("Error loading notes", e);
+    const defaultNote: Note = {
+      id: '1',
+      title: 'বাংলা ও ইংরেজি এ৪ নোটস',
+      content: '<h1>A4 ডকুমেন্ট এডিটর</h1><p>এখানে আপনি <strong>বাংলা (Hind Siliguri)</strong> এবং ইংরেজি যেকোনো ভাষায় সুন্দরভাবে নোট লিখতে পারবেন।</p><h3>প্রধান বৈশিষ্ট্যসমূহ:</h3><ul><li><strong>বাংলা ফন্ট সাপোর্ট:</strong> পিডিএফ ডাউনলোডে বাংলা লেখা একদম স্পষ্ট দেখাবে।</li><li><strong>মাল্টি-পেজ সাপোর্ট:</strong> লেখা ১ পেজের বেশি হলে স্বয়ংক্রিয়ভাবে ২ বা ততধিক পেজের পিডিএফ তৈরি হবে।</li><li><strong>মোবাইল ডিলিট পপআপ:</strong> মোবাইলেও সহজে ডিলিট করার জন্য কাস্টম কনফার্মেশন পপআপ।</li></ul>',
+      date: new Date().toLocaleDateString('bn-BD', { month: 'short', day: 'numeric', year: 'numeric' }),
+      category: 'Personal',
+      wordCount: 45
+    };
+
+    const userStr = localStorage.getItem('student_user');
+    const userEmail = userStr ? JSON.parse(userStr).email : 'guest';
+    fetchCloudData(userEmail, 'notes', [defaultNote]).then(data => {
+      if (data && Array.isArray(data) && data.length > 0) {
+        setNotes(data);
+      } else {
+        setNotes([defaultNote]);
       }
-    } else {
-      // Default welcome sample note
-      const defaultNote: Note = {
-        id: '1',
-        title: 'বাংলা ও ইংরেজি এ৪ নোটস',
-        content: '<h1>A4 ডকুমেন্ট এডিটর</h1><p>এখানে আপনি <strong>বাংলা (Hind Siliguri)</strong> এবং ইংরেজি যেকোনো ভাষায় সুন্দরভাবে নোট লিখতে পারবেন।</p><h3>প্রধান বৈশিষ্ট্যসমূহ:</h3><ul><li><strong>বাংলা ফন্ট সাপোর্ট:</strong> পিডিএফ ডাউনলোডে বাংলা লেখা একদম স্পষ্ট দেখাবে।</li><li><strong>মাল্টি-পেজ সাপোর্ট:</strong> লেখা ১ পেজের বেশি হলে স্বয়ংক্রিয়ভাবে ২ বা ততধিক পেজের পিডিএফ তৈরি হবে।</li><li><strong>মোবাইল ডিলিট পপআপ:</strong> মোবাইলেও সহজে ডিলিট করার জন্য কাস্টম কনফার্মেশন পপআপ।</li></ul>',
-        date: new Date().toLocaleDateString('bn-BD', { month: 'short', day: 'numeric', year: 'numeric' }),
-        category: 'Personal',
-        wordCount: 45
-      };
-      setNotes([defaultNote]);
-      localStorage.setItem('notes', JSON.stringify([defaultNote]));
-    }
+    });
   }, []);
+
+  const saveNotesToStorage = (updatedNotes: Note[]) => {
+    setNotes(updatedNotes);
+    localStorage.setItem('notes', JSON.stringify(updatedNotes));
+    const userStr = localStorage.getItem('student_user');
+    const userEmail = userStr ? JSON.parse(userStr).email : 'guest';
+    saveCloudData(userEmail, 'notes', updatedNotes);
+    setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  };
 
   // --- Sync Editor content when switching active note ---
   useEffect(() => {
@@ -74,61 +82,6 @@ const Notes: React.FC = () => {
     }
   }, [currentNoteId]);
 
-  // --- Persistence Functions ---
-  const saveNotesToStorage = (updatedNotes: Note[]) => {
-    setNotes(updatedNotes);
-    localStorage.setItem('notes', JSON.stringify(updatedNotes));
-    setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-  };
-
-  const createNote = (template: 'blank' | 'lecture' | 'meeting' | 'assignment' = 'blank') => {
-    let initialTitle = 'নতুন নোট';
-    let initialContent = '<p><br></p>';
-    let cat = 'General';
-
-    if (template === 'lecture') {
-      initialTitle = 'লেকচার নোটস';
-      initialContent = '<h1>লেকচারের শিরোনাম</h1><p><strong>বিষয়:</strong> কম্পিউটার সায়েন্স | <strong>তারিখ:</strong> ' + new Date().toLocaleDateString() + '</p><hr/><p><strong>মূল বিষয়বস্তু:</strong></p><ul><li>বিষয় ১: ...</li></ul>';
-      cat = 'Academic';
-    } else if (template === 'meeting') {
-      initialTitle = 'মিটিং বিবরণী';
-      initialContent = '<h1>মিটিং বিবরণী</h1><p><strong>তারিখ:</strong> ' + new Date().toLocaleDateString() + ' | <strong>স্থান:</strong> কনফারেন্স রুম</p><p><strong>উপস্থিতি:</strong> সাইফুল, আরিয়ান, সাকিল</p><hr/><h3>আলোচ্য বিষয়সমূহ</h3><p>মূল সিদ্ধান্তসমূহ...</p>';
-      cat = 'Work';
-    } else if (template === 'assignment') {
-      initialTitle = 'অ্যাসাইনমেন্ট ড্রাফট';
-      initialContent = '<h1>অ্যাসাইনমেন্ট শিরোনাম</h1><p><strong>শিক্ষার্থীর নাম:</strong> সাইফুল আলম</p><p><strong>বিষয়:</strong> সফটওয়্যার ইঞ্জিনিয়ারিং</p><hr/><p>এখানে বিস্তারিত লিখুন...</p>';
-      cat = 'Academic';
-    }
-
-    const newNote: Note = {
-      id: Date.now().toString(),
-      title: initialTitle,
-      content: initialContent,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      category: cat,
-      wordCount: 0
-    };
-
-    const updated = [newNote, ...notes];
-    saveNotesToStorage(updated);
-    setCurrentNoteId(newNote.id);
-  };
-
-  const handleDeleteClick = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setNoteToDelete(id);
-  };
-
-  const confirmDeleteNote = () => {
-    if (!noteToDelete) return;
-    const updated = notes.filter(n => n.id !== noteToDelete);
-    saveNotesToStorage(updated);
-    if (currentNoteId === noteToDelete) {
-      setCurrentNoteId(null);
-    }
-    setNoteToDelete(null);
-  };
-
   const updateCurrentNote = (updates: Partial<Note>) => {
     if (!currentNoteId) return;
     
@@ -143,6 +96,9 @@ const Notes: React.FC = () => {
           : n
       );
       localStorage.setItem('notes', JSON.stringify(updatedNotes));
+      const userStr = localStorage.getItem('student_user');
+      const userEmail = userStr ? JSON.parse(userStr).email : 'guest';
+      saveCloudData(userEmail, 'notes', updatedNotes);
       return updatedNotes;
     });
     setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));

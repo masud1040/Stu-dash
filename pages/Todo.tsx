@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Doughnut, Line } from 'react-chartjs-2';
+import { fetchCloudData, saveCloudData } from '../src/lib/dbSync';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -59,22 +60,22 @@ const Todo: React.FC = () => {
 
   // --- Effects ---
   useEffect(() => {
-    const saved = localStorage.getItem('todos');
-    if (saved) {
-      try {
-        setTodos(JSON.parse(saved));
-      } catch (e) {
-        console.error("Error loading todos", e);
+    const userStr = localStorage.getItem('student_user');
+    const userEmail = userStr ? JSON.parse(userStr).email : 'guest';
+    fetchCloudData(userEmail, 'todos', []).then(data => {
+      if (data && Array.isArray(data)) {
+        setTodos(data);
       }
-    }
+    });
   }, []);
 
-  // Sync to local storage
+  // Sync to cloud storage and localStorage
   const updateTodosState = (updater: (prev: TodoItem[]) => TodoItem[]) => {
     setTodos(prevTodos => {
       const newTodos = updater(prevTodos);
-      localStorage.setItem('todos', JSON.stringify(newTodos));
-      window.dispatchEvent(new Event('storage'));
+      const userStr = localStorage.getItem('student_user');
+      const userEmail = userStr ? JSON.parse(userStr).email : 'guest';
+      saveCloudData(userEmail, 'todos', newTodos);
       return newTodos;
     });
   };

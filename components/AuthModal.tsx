@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../App';
+import { auth, googleProvider, syncUserDataToFirestore } from '../src/lib/firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,35 +15,71 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newUser: User = {
-      name: name || (isLogin ? 'Student User' : 'New Scholar'),
-      email: email || 'student@studydash.com',
-      university: 'Tech University',
-      course: 'Computer Science',
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'Student')}&background=171717&color=fff`,
-    };
-    localStorage.setItem('student_user', JSON.stringify(newUser));
-    onLogin(newUser);
-    onClose();
+    setError('');
+    setLoading(true);
+
+    try {
+      let firebaseUserCred;
+      if (isLogin) {
+        firebaseUserCred = await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        firebaseUserCred = await createUserWithEmailAndPassword(auth, email, password);
+      }
+
+      const fbUser = firebaseUserCred.user;
+      const userName = name || fbUser.displayName || email.split('@')[0];
+      const userObj: User = {
+        name: userName,
+        email: fbUser.email || email,
+        university: 'Tech University',
+        course: 'Computer Science',
+        avatar: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=171717&color=fff`,
+      };
+
+      await syncUserDataToFirestore(userObj.email, userObj);
+      localStorage.setItem('student_user', JSON.stringify(userObj));
+      onLogin(userObj);
+      onClose();
+    } catch (err: any) {
+      console.error('Auth error:', err);
+      setError(err.message || 'Authentication failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleGoogleAuth = () => {
-    const googleUser: User = {
-      name: 'Google Scholar',
-      email: 'scholar.google@example.com',
-      university: 'Global University',
-      course: 'Data Science',
-      avatar: 'https://ui-avatars.com/api/?name=Google+Scholar&background=171717&color=fff',
-      isGoogle: true
-    };
-    localStorage.setItem('student_user', JSON.stringify(googleUser));
-    onLogin(googleUser);
-    onClose();
+  const handleGoogleAuth = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const fbUser = result.user;
+      const userObj: User = {
+        name: fbUser.displayName || 'Google Scholar',
+        email: fbUser.email || 'scholar.google@example.com',
+        university: 'Global University',
+        course: 'Data Science',
+        avatar: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || 'Google Scholar')}&background=171717&color=fff`,
+        isGoogle: true
+      };
+
+      await syncUserDataToFirestore(userObj.email, userObj);
+      localStorage.setItem('student_user', JSON.stringify(userObj));
+      onLogin(userObj);
+      onClose();
+    } catch (err: any) {
+      console.error('Google Auth error:', err);
+      setError(err.message || 'Google authentication failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -54,19 +92,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
           <i className="fa-solid fa-xmark text-lg"></i>
         </button>
 
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="text-xs uppercase tracking-[0.2em] font-bold text-neutral-400 mb-2">StudyDash Workspace</div>
           <h3 className="text-3xl font-black text-neutral-900 font-serif mb-2">
             {isLogin ? 'Sign In' : 'Create Account'}
           </h3>
           <p className="text-xs text-neutral-500 max-w-xs mx-auto">
-            {message || 'Authentication required to save and modify data securely.'}
+            {message || 'Authentication required to save and sync data securely with Firebase.'}
           </p>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+            <i className="fa-solid fa-circle-exclamation"></i>
+            <span>{error}</span>
+          </div>
+        )}
 
         {/* Google Continue */}
         <button
           type="button"
+          disabled={loading}
           onClick={handleGoogleAuth}
           className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-neutral-50 border border-neutral-300 rounded-full font-semibold text-xs uppercase tracking-widest text-neutral-900 transition-colors mb-6 shadow-2xs"
         >
@@ -121,9 +167,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
 
           <button 
             type="submit"
-            className="w-full py-3.5 rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs uppercase tracking-widest shadow-lg transition-all mt-2"
+            disabled={loading}
+            className="w-full py-3.5 rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs uppercase tracking-widest shadow-lg transition-all mt-2 disabled:opacity-50"
           >
-            {isLogin ? 'Sign In' : 'Create Account'}
+            {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
           </button>
         </form>
 

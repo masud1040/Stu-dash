@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { fetchCloudData, saveCloudData } from '../src/lib/dbSync';
 
 export interface Milestone {
   id: string;
@@ -40,17 +41,7 @@ const DEFAULT_MILESTONES: Milestone[] = [
 ];
 
 export const StudyRoadmap: React.FC = () => {
-  const [milestones, setMilestones] = useState<Milestone[]>(() => {
-    const saved = localStorage.getItem('study_roadmap_milestones');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return DEFAULT_MILESTONES;
-      }
-    }
-    return DEFAULT_MILESTONES;
-  });
+  const [milestones, setMilestones] = useState<Milestone[]>(DEFAULT_MILESTONES);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -58,7 +49,19 @@ export const StudyRoadmap: React.FC = () => {
   const [newDate, setNewDate] = useState('');
 
   useEffect(() => {
-    localStorage.setItem('study_roadmap_milestones', JSON.stringify(milestones));
+    const userStr = localStorage.getItem('student_user');
+    const userEmail = userStr ? JSON.parse(userStr).email : 'guest';
+    fetchCloudData(userEmail, 'study_roadmap_milestones', DEFAULT_MILESTONES).then(data => {
+      if (data && Array.isArray(data)) {
+        setMilestones(data);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('student_user');
+    const userEmail = userStr ? JSON.parse(userStr).email : 'guest';
+    saveCloudData(userEmail, 'study_roadmap_milestones', milestones);
   }, [milestones]);
 
   const toggleMilestone = (id: string) => {

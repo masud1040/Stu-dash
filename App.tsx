@@ -13,6 +13,8 @@ import InterviewPrep from './pages/InterviewPrep';
 import PasswordManager from './components/PasswordManager';
 import LandingPage from './components/LandingPage';
 import AuthModal from './components/AuthModal';
+import { auth, getUserDataFromFirestore } from './src/lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 // Types
 export type Page = 'dashboard' | 'study' | 'habits' | 'resources' | 'todo' | 'notes' | 'analytics' | 'profile' | 'settings' | 'others' | 'interview' | 'passwords';
@@ -357,6 +359,7 @@ const GlobalTimer = () => {
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isGuest, setIsGuest] = useState(false);
+  const [isLoadingExplore, setIsLoadingExplore] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMessage, setAuthModalMessage] = useState('');
 
@@ -388,12 +391,26 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Load User
-    const storedUser = localStorage.getItem('student_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-      setIsGuest(false);
-    }
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const cloudProfile = await getUserDataFromFirestore(firebaseUser.email || '');
+        const storedUser = localStorage.getItem('student_user');
+        let localObj = storedUser ? JSON.parse(storedUser) : null;
+
+        const userObj: User = cloudProfile || localObj || {
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Student',
+          email: firebaseUser.email || 'student@studydash.com',
+          university: 'Tech University',
+          course: 'Computer Science',
+          avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName || 'Student')}&background=171717&color=fff`,
+        };
+        setUser(userObj);
+        setIsGuest(false);
+        localStorage.setItem('student_user', JSON.stringify(userObj));
+      } else {
+        setUser(null);
+      }
+    });
 
     // Resize Handler
     const handleResize = () => {
@@ -408,7 +425,10 @@ const App: React.FC = () => {
 
     handleResize();
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('resize', handleResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -466,10 +486,15 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
     localStorage.removeItem('student_user');
     setUser(null);
-    setIsGuest(false);
+    setIsGuest(true);
     setCurrentPage('dashboard');
   };
 
@@ -485,10 +510,31 @@ const App: React.FC = () => {
 
   // If neither logged in nor guest, show Landing Page
   if (!user && !isGuest) {
+    if (isLoadingExplore) {
+      return (
+        <div className="fixed inset-0 bg-white dark:bg-slate-900 z-50 flex flex-col items-center justify-center animate-fade-in">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-2xl font-bold shadow-xl shadow-indigo-500/30 animate-pulse mb-6">
+            <i className="fa-solid fa-graduation-cap"></i>
+          </div>
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white font-serif mb-2">Preparing StudyDash</h2>
+          <p className="text-xs text-slate-500 tracking-widest uppercase font-semibold mb-6">Loading student workspace modules...</p>
+          <div className="w-48 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div className="h-full bg-indigo-600 animate-[indeterminate_1s_infinite_linear]" style={{ width: '60%' }}></div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <>
         <LandingPage 
-          onExplore={() => setIsGuest(true)}
+          onExplore={() => {
+            setIsLoadingExplore(true);
+            setTimeout(() => {
+              setIsLoadingExplore(false);
+              setIsGuest(true);
+            }, 900);
+          }}
           onOpenAuth={() => setShowAuthModal(true)}
         />
         <AuthModal 
@@ -726,7 +772,7 @@ const App: React.FC = () => {
 
         {/* Content Scroll Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth bg-slate-50 dark:bg-slate-900">
-          <div className="max-w-7xl mx-auto">
+          <div key={currentPage} className="max-w-7xl mx-auto animate-page-enter">
             {renderPage()}
           </div>
         </div>
