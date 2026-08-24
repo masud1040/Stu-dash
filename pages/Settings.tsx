@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../App';
+import { clearFullDatabase } from '../src/lib/firebase';
 
 interface SettingsProps {
   darkMode: boolean;
@@ -88,11 +89,11 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
       localStorage.removeItem('local_notifications');
   };
 
-  const handleDeleteAccount = () => {
-      const confirmText = prompt("Type 'DELETE' to permanently erase all data (Tasks, Habits, Notes, etc.) and reset the app.");
+  const handleDeleteAccount = async () => {
+      const confirmText = prompt("Type 'DELETE' to permanently erase all database collections (Users, Tasks, Habits, Notes) and reset the app.");
       if (confirmText === 'DELETE') {
-          // Hard Reset
-          localStorage.clear(); 
+          // Hard Reset Firestore & LocalStorage
+          await clearFullDatabase(); 
           // Logout/Reload
           onLogout();
           window.location.reload(); 

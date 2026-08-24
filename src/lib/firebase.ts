@@ -41,3 +41,26 @@ export async function getUserDataFromFirestore(userId: string) {
   return null;
 }
 
+export async function clearFullDatabase() {
+  try {
+    // Clear 'users' collection
+    const usersSnap = await getDocs(collection(db, 'users'));
+    const userDeletes = usersSnap.docs.map((d) => deleteDoc(doc(db, 'users', d.id)));
+    await Promise.all(userDeletes);
+
+    // Clear 'user_data' collection
+    const userDataSnap = await getDocs(collection(db, 'user_data'));
+    const dataDeletes = userDataSnap.docs.map((d) => deleteDoc(doc(db, 'user_data', d.id)));
+    await Promise.all(dataDeletes);
+
+    // Clear local storage
+    localStorage.clear();
+    console.log('Full database and local storage cleared successfully.');
+    return true;
+  } catch (err) {
+    console.error('Error clearing database:', err);
+    localStorage.clear();
+    return false;
+  }
+}
+

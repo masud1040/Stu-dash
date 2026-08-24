@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import ImageResizer from '../components/ImageResizer';
 import UrlShortener from '../components/UrlShortener';
+import CvMakerCard from '../components/CvMakerCard';
 
 interface Meeting {
   id: string;
@@ -233,6 +234,9 @@ const Others: React.FC = () => {
         </div>
       </div>
 
+      {/* Online CV Maker Tool */}
+      <CvMakerCard />
+
       {/* Image Resizer Studio */}
       <ImageResizer />
 
@@ -304,45 +308,85 @@ const Others: React.FC = () => {
 
         {/* --- CV / Resume Manager --- */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col">
-           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center text-white shadow-lg shadow-orange-200 dark:shadow-none">
-              <i className="fa-solid fa-file-contract"></i>
+           <div className="flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center text-white shadow-lg shadow-orange-200 dark:shadow-none">
+                <i className="fa-solid fa-file-contract"></i>
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 dark:text-white">CV / Resume</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Keep your profile ready & create online</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-slate-800 dark:text-white">CV / Resume</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Keep your professional profile ready</p>
-            </div>
+            <a
+              href="https://cv-maker-nine-alpha.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 rounded-lg transition-colors border border-indigo-100 dark:border-indigo-900/30"
+              title="Open CV Maker Website"
+            >
+              <span>CV Maker</span>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+            </a>
           </div>
 
           <div className="flex-1 flex flex-col justify-center">
              {cvData ? (
-                <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30 rounded-xl p-4 flex items-center gap-4">
-                   <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-lg flex items-center justify-center text-red-500 text-2xl shadow-sm">
-                      <i className="fa-solid fa-file-pdf"></i>
-                   </div>
-                   <div className="flex-1 min-w-0">
-                      <div className="font-bold text-slate-800 dark:text-white truncate">{cvData.fileName}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">Uploaded: {cvData.uploadDate}</div>
-                   </div>
-                   <div className="flex gap-2">
-                      <button onClick={downloadCV} className="w-8 h-8 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg shadow-sm flex items-center justify-center hover:text-primary transition-colors" title="Download">
-                         <i className="fa-solid fa-download"></i>
-                      </button>
-                      <button onClick={deleteCV} className="w-8 h-8 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg shadow-sm flex items-center justify-center hover:text-red-500 transition-colors" title="Delete">
-                         <i className="fa-solid fa-trash"></i>
-                      </button>
-                   </div>
+                <div className="space-y-3">
+                  <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-100 dark:border-orange-900/30 rounded-xl p-4 flex items-center gap-4">
+                     <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-lg flex items-center justify-center text-red-500 text-2xl shadow-sm">
+                        <i className="fa-solid fa-file-pdf"></i>
+                     </div>
+                     <div className="flex-1 min-w-0">
+                        <div className="font-bold text-slate-800 dark:text-white truncate">{cvData.fileName}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">Uploaded: {cvData.uploadDate}</div>
+                     </div>
+                     <div className="flex gap-2">
+                        <button onClick={downloadCV} className="w-8 h-8 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg shadow-sm flex items-center justify-center hover:text-primary transition-colors" title="Download">
+                           <i className="fa-solid fa-download"></i>
+                        </button>
+                        <button onClick={deleteCV} className="w-8 h-8 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg shadow-sm flex items-center justify-center hover:text-red-500 transition-colors" title="Delete">
+                           <i className="fa-solid fa-trash"></i>
+                        </button>
+                     </div>
+                  </div>
+                  <a
+                    href="https://cv-maker-nine-alpha.vercel.app/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2 px-3 text-xs font-semibold text-center text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-700/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg border border-slate-200 dark:border-slate-600 flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <span>Create a new updated CV on CV Maker</span>
+                    <i className="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                  </a>
                 </div>
              ) : (
-                <div 
-                  onClick={() => cvInputRef.current?.click()}
-                  className="flex-1 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl flex flex-col items-center justify-center p-6 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
-                >
-                   <div className="w-14 h-14 bg-orange-100 dark:bg-slate-700 rounded-full flex items-center justify-center text-orange-500 mb-3 group-hover:scale-110 transition-transform">
-                      <i className="fa-solid fa-cloud-arrow-up text-2xl"></i>
-                   </div>
-                   <h4 className="font-bold text-slate-700 dark:text-slate-200">Upload CV (PDF)</h4>
-                   <p className="text-xs text-slate-400 mt-1">Max file size 5MB</p>
+                <div className="space-y-3">
+                  <div 
+                    onClick={() => cvInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl flex flex-col items-center justify-center p-6 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group"
+                  >
+                     <div className="w-14 h-14 bg-orange-100 dark:bg-slate-700 rounded-full flex items-center justify-center text-orange-500 mb-3 group-hover:scale-110 transition-transform">
+                        <i className="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                     </div>
+                     <h4 className="font-bold text-slate-700 dark:text-slate-200">Upload CV (PDF)</h4>
+                     <p className="text-xs text-slate-400 mt-1">Max file size 5MB</p>
+                  </div>
+
+                  <div className="text-center">
+                    <span className="text-xs text-slate-400">or</span>
+                  </div>
+
+                  <a
+                    href="https://cv-maker-nine-alpha.vercel.app/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-colors shadow-xs"
+                  >
+                    <i className="fa-solid fa-wand-magic-sparkles text-amber-500"></i>
+                    <span>Build with CV Maker Website</span>
+                    <i className="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                  </a>
                 </div>
              )}
              <input type="file" ref={cvInputRef} className="hidden" accept="application/pdf" onChange={handleCVUpload} />
