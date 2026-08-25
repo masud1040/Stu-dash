@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { fetchCloudData, saveCloudData } from '../src/lib/dbSync';
+
 
 export interface QuestionItem {
   id: string;
@@ -73,45 +75,38 @@ const InterviewPrep: React.FC = () => {
   // File input ref for JSON import
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Load from local storage
+  // Load from cloud / local storage
   useEffect(() => {
-    const storedQuestions = localStorage.getItem('interview_questions');
-    if (storedQuestions) {
-      try {
-        setQuestions(JSON.parse(storedQuestions));
-      } catch (e) {
+    fetchCloudData('', 'interview_questions', INITIAL_QUESTIONS).then((loadedQ) => {
+      if (loadedQ && Array.isArray(loadedQ) && loadedQ.length > 0) {
+        setQuestions(loadedQ);
+      } else {
         setQuestions(INITIAL_QUESTIONS);
       }
-    } else {
-      setQuestions(INITIAL_QUESTIONS);
-      localStorage.setItem('interview_questions', JSON.stringify(INITIAL_QUESTIONS));
-    }
+    });
 
-    const storedTags = localStorage.getItem('interview_tags');
-    if (storedTags) {
-      try {
-        setTags(JSON.parse(storedTags));
-      } catch (e) {
+    fetchCloudData('', 'interview_tags', DEFAULT_TAGS).then((loadedTags) => {
+      if (loadedTags && Array.isArray(loadedTags) && loadedTags.length > 0) {
+        setTags(loadedTags);
+      } else {
         setTags(DEFAULT_TAGS);
       }
-    } else {
-      setTags(DEFAULT_TAGS);
-      localStorage.setItem('interview_tags', JSON.stringify(DEFAULT_TAGS));
-    }
+    });
   }, []);
 
-  // Sync questions to LocalStorage
+  // Sync questions to Firestore & LocalStorage
   const saveQuestionsToStorage = (updated: QuestionItem[]) => {
     setQuestions(updated);
-    localStorage.setItem('interview_questions', JSON.stringify(updated));
+    saveCloudData('', 'interview_questions', updated);
   };
 
-  // Sync tags to LocalStorage
+  // Sync tags to Firestore & LocalStorage
   const saveTagsToStorage = (updatedTags: string[]) => {
     const unique = Array.from(new Set(updatedTags)).filter(Boolean);
     setTags(unique);
-    localStorage.setItem('interview_tags', JSON.stringify(unique));
+    saveCloudData('', 'interview_tags', unique);
   };
+
 
   const showToast = (msg: string) => {
     setToastMessage(msg);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { fetchCloudData, saveCloudData } from '../src/lib/dbSync';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,6 +14,7 @@ import {
   Legend,
   Filler
 } from 'chart.js';
+
 import { Bar, Line } from 'react-chartjs-2';
 
 ChartJS.register(
@@ -88,50 +90,46 @@ const HabitTracker: React.FC = () => {
 
   // --- Initial Load & Storage ---
   useEffect(() => {
-    const saved = localStorage.getItem('habits');
-    if (saved) {
-      try {
-        setHabits(JSON.parse(saved));
-      } catch (e) {
-        console.error("Error loading habits", e);
+    const defaultHabits: Habit[] = [
+      {
+        id: '1',
+        name: 'পানি পান করা (৩ লিটার)',
+        icon: 'fa-glass-water',
+        color: 'bg-sky-500',
+        colorHex: '#0ea5e9',
+        category: 'Health',
+        streak: 4,
+        completedDates: [getTodayStr(), getPastDateStr(1), getPastDateStr(2), getPastDateStr(3)]
+      },
+      {
+        id: '2',
+        name: 'ব্যায়াম ও স্ট্রেচিং',
+        icon: 'fa-dumbbell',
+        color: 'bg-emerald-500',
+        colorHex: '#10b981',
+        category: 'Fitness',
+        streak: 2,
+        completedDates: [getTodayStr(), getPastDateStr(1)]
+      },
+      {
+        id: '3',
+        name: 'বই পড়া (৩০ মিনিট)',
+        icon: 'fa-book-open',
+        color: 'bg-indigo-500',
+        colorHex: '#6366f1',
+        category: 'Mindset',
+        streak: 3,
+        completedDates: [getTodayStr(), getPastDateStr(1), getPastDateStr(2)]
       }
-    } else {
-      // Default sample habits
-      const defaultHabits: Habit[] = [
-        {
-          id: '1',
-          name: 'পানি পান করা (৩ লিটার)',
-          icon: 'fa-glass-water',
-          color: 'bg-sky-500',
-          colorHex: '#0ea5e9',
-          category: 'Health',
-          streak: 4,
-          completedDates: [getTodayStr(), getPastDateStr(1), getPastDateStr(2), getPastDateStr(3)]
-        },
-        {
-          id: '2',
-          name: 'ব্যায়াম ও স্ট্রেচিং',
-          icon: 'fa-dumbbell',
-          color: 'bg-emerald-500',
-          colorHex: '#10b981',
-          category: 'Fitness',
-          streak: 2,
-          completedDates: [getTodayStr(), getPastDateStr(1)]
-        },
-        {
-          id: '3',
-          name: 'বই পড়া (৩০ মিনিট)',
-          icon: 'fa-book-open',
-          color: 'bg-indigo-500',
-          colorHex: '#6366f1',
-          category: 'Mindset',
-          streak: 3,
-          completedDates: [getTodayStr(), getPastDateStr(1), getPastDateStr(2)]
-        }
-      ];
-      setHabits(defaultHabits);
-      localStorage.setItem('habits', JSON.stringify(defaultHabits));
-    }
+    ];
+
+    fetchCloudData('', 'habits', defaultHabits).then((loaded) => {
+      if (loaded && Array.isArray(loaded) && loaded.length > 0) {
+        setHabits(loaded);
+      } else {
+        setHabits(defaultHabits);
+      }
+    });
   }, []);
 
   // Rotation Quote timer
@@ -156,9 +154,9 @@ const HabitTracker: React.FC = () => {
 
   const saveHabits = (updated: Habit[]) => {
     setHabits(updated);
-    localStorage.setItem('habits', JSON.stringify(updated));
-    window.dispatchEvent(new Event('storage'));
+    saveCloudData('', 'habits', updated);
   };
+
 
   // Compute 7 days for the selected week offset
   const getWeekDates = (offset = 0) => {

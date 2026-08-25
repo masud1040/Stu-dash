@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { AnimatedCounter } from '../components/AnimatedCounter';
+import { fetchCloudData, saveCloudData } from '../src/lib/dbSync';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -12,6 +13,7 @@ import {
   Legend,
   ArcElement
 } from 'chart.js';
+
 import { Bar, Doughnut } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
@@ -78,25 +80,28 @@ export const StudyTracker: React.FC = () => {
   const distChartRef = useRef<any>(null);
 
   useEffect(() => {
-    const savedSubjects = localStorage.getItem('subjects');
-    const savedSessions = localStorage.getItem('study_sessions');
-    const savedAssignments = localStorage.getItem('study_assignments');
+    fetchCloudData('', 'subjects', []).then((parsed) => {
+      if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+        setSubjects(parsed);
+        setSelectedSubjectId(parsed[0].id);
+      }
+    });
 
-    if (savedSubjects) {
-      const parsed = JSON.parse(savedSubjects);
-      setSubjects(parsed);
-      if (parsed.length > 0) setSelectedSubjectId(parsed[0].id);
-    } 
+    fetchCloudData('', 'study_sessions', []).then((savedSessions) => {
+      if (savedSessions && Array.isArray(savedSessions)) {
+        setSessions(savedSessions);
+      }
+    });
 
-    if (savedSessions) setSessions(JSON.parse(savedSessions));
-
-    if (savedAssignments) {
-        const parsedAssignments = JSON.parse(savedAssignments);
+    fetchCloudData('', 'study_assignments', []).then((savedAssignments) => {
+      if (savedAssignments && Array.isArray(savedAssignments)) {
         const today = new Date().toISOString().split('T')[0];
-        const validAssignments = parsedAssignments.filter((a: Assignment) => a.deadline >= today);
+        const validAssignments = savedAssignments.filter((a: Assignment) => a.deadline >= today);
         setAssignments(validAssignments);
-    }
+      }
+    });
   }, []);
+
 
   useEffect(() => {
     if (activeSession) {
@@ -166,7 +171,7 @@ export const StudyTracker: React.FC = () => {
         };
         const updatedSessions = [newSession, ...sessions];
         setSessions(updatedSessions);
-        localStorage.setItem('study_sessions', JSON.stringify(updatedSessions));
+        saveCloudData('', 'study_sessions', updatedSessions);
       }
       setActiveSession(null);
       setElapsed(0);
@@ -190,7 +195,7 @@ export const StudyTracker: React.FC = () => {
 
     const updatedSessions = [newSession, ...sessions];
     setSessions(updatedSessions);
-    localStorage.setItem('study_sessions', JSON.stringify(updatedSessions));
+    saveCloudData('', 'study_sessions', updatedSessions);
     setShowManualModal(false);
     setManualEntry({ subjectId: '', date: new Date().toISOString().split('T')[0], hours: 0, minutes: 0 });
   };
@@ -208,9 +213,9 @@ export const StudyTracker: React.FC = () => {
     setSessions(updatedSessions);
     setAssignments(updatedAssignments);
     
-    localStorage.setItem('subjects', JSON.stringify(updatedSubjects));
-    localStorage.setItem('study_sessions', JSON.stringify(updatedSessions));
-    localStorage.setItem('study_assignments', JSON.stringify(updatedAssignments));
+    saveCloudData('', 'subjects', updatedSubjects);
+    saveCloudData('', 'study_sessions', updatedSessions);
+    saveCloudData('', 'study_assignments', updatedAssignments);
     
     if (selectedSubjectId === id) {
         setSelectedSubjectId(updatedSubjects.length > 0 ? updatedSubjects[0].id : '');
@@ -235,7 +240,7 @@ export const StudyTracker: React.FC = () => {
       if (!selectedSubjectId) setSelectedSubjectId(newSub.id);
     }
     setSubjects(updatedSubjects);
-    localStorage.setItem('subjects', JSON.stringify(updatedSubjects));
+    saveCloudData('', 'subjects', updatedSubjects);
     setSubjectForm({ id: '', name: '', targetHours: 20 });
     setIsEditing(false);
     setShowSubjectForm(false);
@@ -244,7 +249,7 @@ export const StudyTracker: React.FC = () => {
   const deleteAssignment = (id: string) => {
     const updated = assignments.filter(a => a.id !== id);
     setAssignments(updated);
-    localStorage.setItem('study_assignments', JSON.stringify(updated));
+    saveCloudData('', 'study_assignments', updated);
   };
 
   const handleSaveAssignment = () => {
@@ -263,7 +268,7 @@ export const StudyTracker: React.FC = () => {
         };
         const updatedSubjects = [...subjects, newSub];
         setSubjects(updatedSubjects);
-        localStorage.setItem('subjects', JSON.stringify(updatedSubjects));
+        saveCloudData('', 'subjects', updatedSubjects);
         finalSubjectId = newSub.id;
     }
 
@@ -283,7 +288,8 @@ export const StudyTracker: React.FC = () => {
 
     updatedAssignments.sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
     setAssignments(updatedAssignments);
-    localStorage.setItem('study_assignments', JSON.stringify(updatedAssignments));
+    saveCloudData('', 'study_assignments', updatedAssignments);
+
     
     setAssignmentForm({ id: '', subjectId: '', topic: '', deadline: '' });
     setAssignmentSubjectName('');

@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../App';
-import { clearFullDatabase } from '../src/lib/firebase';
+import { 
+  clearFullDatabase, 
+  getCurrentFirebaseInfo, 
+  saveCustomFirebaseConfig, 
+  resetToDefaultFirebase, 
+  testFirestoreConnection,
+  syncAllLocalDataToFirestore,
+  fetchAllCloudDataToLocal,
+  SUPER_ADMIN_EMAIL
+} from '../src/lib/firebase';
 
 interface SettingsProps {
   darkMode: boolean;
@@ -20,12 +29,17 @@ interface Notification {
 }
 
 const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePreference, setTheme, user, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'account' | 'notifications'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'account' | 'notifications' | 'database'>('general');
   const [password, setPassword] = useState({ current: '', new: '', confirm: '' });
-  const [timerHidden, setTimerHidden] = useState(() => {
-    return localStorage.getItem('global_timer_hidden') === 'true';
-  });
   
+  // Firebase Admin State
+  const [firebaseInfo, setFirebaseInfo] = useState(getCurrentFirebaseInfo());
+  const [customConfigJson, setCustomConfigJson] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+
   // Notification State
   const [notificationSettings, setNotificationSettings] = useState({
     emailMonthly: true,
@@ -40,9 +54,15 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
     const savedSettings = localStorage.getItem('notification_settings');
     if (savedSettings) setNotificationSettings(JSON.parse(savedSettings));
 
-    // Load local notifications (simulating "joma hbe")
+    // Load local notifications
     const savedNotifs = localStorage.getItem('local_notifications');
     if (savedNotifs) setNotifications(JSON.parse(savedNotifs));
+    
+    // Load custom firebase config into text area if exists
+    const customConfig = localStorage.getItem('custom_firebase_config');
+    if (customConfig) {
+      setCustomConfigJson(customConfig);
+    }
   }, []);
 
   const handlePasswordChange = (e: React.FormEvent) => {
@@ -67,10 +87,8 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
         return;
     }
 
-    // 1. Simulate Email
     alert(`📧 Email sent to: ${user.email}\n\nSubject: Your Monthly Progress Report\nBody: You studied 45 hours this month! Keep it up.`);
 
-    // 2. Add to In-App Notifications ("Notification joma hbe")
     const newNotif: Notification = {
         id: Date.now().toString(),
         title: 'Monthly Report Ready',
@@ -96,10 +114,8 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
     if (confirmText === 'DELETE') {
       try {
         setIsDeleting(true);
-        // Hard Reset Firestore & LocalStorage
         await clearFullDatabase(); 
         alert("Database has been completely cleared and wiped.");
-        // Logout/Reload
         onLogout();
         window.location.reload(); 
       } catch (err) {
@@ -112,6 +128,94 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
       }
     } else if (confirmText !== null) {
       alert("Deletion cancelled. You must type 'DELETE' exactly.");
+    }
+  };
+
+  // Sync All Data to Firestore
+  const handleSyncAllToCloud = async () => {
+    try {
+      setIsSyncing(true);
+      setSyncStatusMsg(null);
+      const res = await syncAllLocalDataToFirestore(user.email || SUPER_ADMIN_EMAIL);
+      setSyncStatusMsg(`✅ Successfully synced ${res.count} modules to Firestore!`);
+    } catch (err: any) {
+      setSyncStatusMsg(`❌ Sync error: ${err?.message || 'Failed to sync data'}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Fetch All Cloud Data to Local
+  const handleFetchAllFromCloud = async () => {
+    try {
+      setIsSyncing(true);
+      setSyncStatusMsg(null);
+      const res = await fetchAllCloudDataToLocal(user.email || SUPER_ADMIN_EMAIL);
+      setSyncStatusMsg(`✅ Successfully retrieved and restored ${res.count} data items from Firestore!`);
+      setTimeout(() => {
+        window.location.reload();
+      }, 1200);
+    } catch (err: any) {
+      setSyncStatusMsg(`❌ Fetch error: ${err?.message || 'Failed to fetch cloud data'}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Test Firestore Connection
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const res = await testFirestoreConnection();
+      setTestResult(res);
+    } catch (err: any) {
+      setTestResult({ success: false, message: err?.message || 'Connection failed' });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  // Save Custom Firebase Project Config
+  const handleSaveCustomFirebase = () => {
+    if (!customConfigJson.trim()) {
+      alert("Please paste your Firebase config JSON object.");
+      return;
+    }
+    try {
+      // Allow clean js object or JSON string
+      let cleaned = customConfigJson.trim();
+      if (cleaned.startsWith('const firebaseConfig =')) {
+        cleaned = cleaned.replace('const firebaseConfig =', '').replace(/;$/, '').trim();
+      }
+      // If keys aren't quoted, format or parse
+      let parsed;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (jsonErr) {
+        // Evaluate safely if JavaScript object format was pasted
+        parsed = Function(`"use strict"; return (${cleaned});`)();
+      }
+
+      if (!parsed.apiKey || !parsed.projectId) {
+        alert("Config must contain at least 'apiKey' and 'projectId'.");
+        return;
+      }
+
+      saveCustomFirebaseConfig(parsed);
+      alert("🎉 Custom Firebase configuration saved! The application will reload to connect to your Firebase project.");
+      window.location.reload();
+    } catch (err: any) {
+      alert("Invalid configuration format: " + err.message);
+    }
+  };
+
+  // Reset to default Firebase
+  const handleResetToDefaultFirebase = () => {
+    if (confirm("Reset to default AI Studio Firebase project?")) {
+      resetToDefaultFirebase();
+      alert("Reset to default Firebase. Reloading...");
+      window.location.reload();
     }
   };
 
@@ -129,7 +233,7 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
     <div className="space-y-6 animate-fade-in pb-10">
       <header>
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Settings</h2>
-        <p className="text-slate-500 dark:text-slate-400">Manage your application preferences and account.</p>
+        <p className="text-slate-500 dark:text-slate-400">Manage your application preferences, Firebase database, and security.</p>
       </header>
 
       <div className="flex flex-col lg:flex-row gap-8">
@@ -142,6 +246,12 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                 className={`text-left px-6 py-4 font-medium transition-colors border-l-4 ${activeTab === 'general' ? 'bg-primary/5 text-primary border-primary' : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
               >
                 <i className="fa-solid fa-sliders mr-3 w-5"></i> General
+              </button>
+              <button 
+                onClick={() => setActiveTab('database')}
+                className={`text-left px-6 py-4 font-medium transition-colors border-l-4 ${activeTab === 'database' ? 'bg-primary/5 text-primary border-primary' : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+              >
+                <i className="fa-solid fa-database mr-3 w-5 text-amber-500"></i> Database & Admin
               </button>
               <button 
                 onClick={() => setActiveTab('account')}
@@ -226,6 +336,167 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                        </select>
                      </div>
                    </div>
+                </div>
+              </div>
+            )}
+
+            {/* --- DATABASE & ADMIN SETTINGS --- */}
+            {activeTab === 'database' && (
+              <div className="space-y-6 animate-fade-in">
+                {/* Admin Status Card */}
+                <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-6 shadow-md border border-indigo-900/40 relative overflow-hidden">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative z-10">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="bg-amber-400/20 text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-400/30 flex items-center gap-1">
+                          <i className="fa-solid fa-crown text-[10px]"></i> Database Super Admin
+                        </span>
+                        <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${firebaseInfo.isCustom ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'}`}>
+                          {firebaseInfo.isCustom ? 'Custom Firebase (Owner Admin)' : 'Active Cloud Database'}
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-bold">{SUPER_ADMIN_EMAIL}</h3>
+                      <p className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                        <span>Project: <code className="text-indigo-200 bg-indigo-950/60 px-1.5 py-0.5 rounded">{firebaseInfo.projectId}</code></span>
+                        <span>•</span>
+                        <span>DB: <code className="text-indigo-200 bg-indigo-950/60 px-1.5 py-0.5 rounded">{firebaseInfo.databaseId}</code></span>
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleTestConnection}
+                      disabled={isTesting}
+                      className="px-4 py-2 bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-semibold rounded-xl border border-indigo-500/50 transition-all flex items-center gap-2 shrink-0 disabled:opacity-50"
+                    >
+                      <i className={`fa-solid ${isTesting ? 'fa-spinner fa-spin' : 'fa-network-wired'}`}></i>
+                      <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
+                    </button>
+                  </div>
+
+                  {testResult && (
+                    <div className={`mt-4 p-3 rounded-xl text-xs font-medium border flex items-center gap-2 animate-fade-in ${testResult.success ? 'bg-emerald-950/50 border-emerald-700/60 text-emerald-200' : 'bg-red-950/50 border-red-700/60 text-red-200'}`}>
+                      <i className={`fa-solid ${testResult.success ? 'fa-circle-check text-emerald-400' : 'fa-triangle-exclamation text-red-400'}`}></i>
+                      <span>{testResult.message}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Cloud Sync Operations */}
+                <div className="bg-slate-50 dark:bg-slate-900/40 rounded-2xl p-6 border border-slate-200 dark:border-slate-700/80 space-y-4">
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                      <i className="fa-solid fa-cloud-arrow-up text-indigo-500"></i>
+                      Full Database Sync Engine
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Sync all 10+ modules (Todos, Notes, Habits, Study Sessions, Subjects, Assignments, Interview Q&As, Password Vault, Short URLs, Roadmap Milestones) to/from Firestore Cloud Database.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3 pt-2">
+                    <button
+                      onClick={handleSyncAllToCloud}
+                      disabled={isSyncing}
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <i className={`fa-solid ${isSyncing ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-up'}`}></i>
+                      <span>Sync All Local Data to Cloud DB</span>
+                    </button>
+
+                    <button
+                      onClick={handleFetchAllFromCloud}
+                      disabled={isSyncing}
+                      className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <i className={`fa-solid ${isSyncing ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-down'}`}></i>
+                      <span>Fetch & Restore from Cloud DB</span>
+                    </button>
+                  </div>
+
+                  {syncStatusMsg && (
+                    <p className="text-xs font-semibold p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 animate-fade-in">
+                      {syncStatusMsg}
+                    </p>
+                  )}
+                </div>
+
+                {/* Connect Own Firebase Project (Full Owner Admin) */}
+                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                        <i className="fa-brands fa-google text-amber-500"></i>
+                        Connect Your Own Firebase Project (100% Admin & Owner)
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                        আপনি যদি নিজে Firebase Console-এর মালিক/এডমিন হয়ে সম্পূর্ণ ডাটা সরাসরি আপনার নিজের Firebase Project-এ রাখতে চান, তাহলে আপনার Firebase Console (<a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-indigo-600 underline">console.firebase.google.com</a>) থেকে Web App Config টি নিচে পেস্ট করে সেভ করুন।
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Firebase Web App Config (JSON or JavaScript Object):
+                    </label>
+                    <textarea
+                      rows={6}
+                      className="w-full font-mono text-xs p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                      placeholder={`{
+  "apiKey": "AIzaSy...",
+  "authDomain": "your-project.firebaseapp.com",
+  "projectId": "your-project-id",
+  "storageBucket": "your-project.appspot.com",
+  "messagingSenderId": "1234567890",
+  "appId": "1:1234567890:web:abcdef"
+}`}
+                      value={customConfigJson}
+                      onChange={(e) => setCustomConfigJson(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={handleSaveCustomFirebase}
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center gap-2"
+                    >
+                      <i className="fa-solid fa-floppy-disk"></i>
+                      <span>Save & Connect My Firebase</span>
+                    </button>
+
+                    {firebaseInfo.isCustom && (
+                      <button
+                        onClick={handleResetToDefaultFirebase}
+                        className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-xl transition-all"
+                      >
+                        Reset to Default Database
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Firestore Collections Overview */}
+                <div className="border-t border-slate-100 dark:border-slate-700 pt-6">
+                  <h4 className="font-bold text-sm text-slate-800 dark:text-white mb-3 flex items-center gap-2">
+                    <i className="fa-solid fa-list-check text-slate-400"></i>
+                    Synced Cloud Collections
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    {[
+                      { name: 'users', label: 'User Profiles' },
+                      { name: 'user_data', label: 'Master Sync State' },
+                      { name: 'todos', label: 'Todos & Tasks' },
+                      { name: 'notes', label: 'Study Notes' },
+                      { name: 'habits', label: 'Habit Tracker' },
+                      { name: 'subjects', label: 'Study Subjects' },
+                      { name: 'study_sessions', label: 'Timer Sessions' },
+                      { name: 'interview_questions', label: 'Interview Q&A' },
+                    ].map(c => (
+                      <div key={c.name} className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                        <span className="font-medium text-slate-700 dark:text-slate-300">{c.label}</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
