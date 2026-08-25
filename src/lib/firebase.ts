@@ -42,24 +42,43 @@ export async function getUserDataFromFirestore(userId: string) {
 }
 
 export async function clearFullDatabase() {
+  const collectionsToClear = [
+    'users',
+    'user_data',
+    'tasks',
+    'habits',
+    'notes',
+    'todos',
+    'interview_questions',
+    'routines',
+    'analytics',
+    'short_urls',
+    'passwords',
+    'study_roadmap_milestones'
+  ];
+
   try {
-    // Clear 'users' collection
-    const usersSnap = await getDocs(collection(db, 'users'));
-    const userDeletes = usersSnap.docs.map((d) => deleteDoc(doc(db, 'users', d.id)));
-    await Promise.all(userDeletes);
+    for (const collName of collectionsToClear) {
+      try {
+        const snap = await getDocs(collection(db, collName));
+        if (!snap.empty) {
+          const deletePromises = snap.docs.map((d) => deleteDoc(doc(db, collName, d.id)));
+          await Promise.all(deletePromises);
+        }
+      } catch (err) {
+        console.warn(`Could not clear collection ${collName}:`, err);
+      }
+    }
 
-    // Clear 'user_data' collection
-    const userDataSnap = await getDocs(collection(db, 'user_data'));
-    const dataDeletes = userDataSnap.docs.map((d) => deleteDoc(doc(db, 'user_data', d.id)));
-    await Promise.all(dataDeletes);
-
-    // Clear local storage
+    // Clear all client storage
     localStorage.clear();
+    sessionStorage.clear();
     console.log('Full database and local storage cleared successfully.');
     return true;
   } catch (err) {
     console.error('Error clearing database:', err);
     localStorage.clear();
+    sessionStorage.clear();
     return false;
   }
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface QuestionItem {
   id: string;
@@ -550,11 +551,12 @@ const InterviewPrep: React.FC = () => {
   return (
     <div className="space-y-8 pb-12">
       {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-[110] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-bounce">
+      {toastMessage && typeof document !== 'undefined' && createPortal(
+        <div className="fixed top-6 right-6 z-[250] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-bounce">
           <i className="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
           <span className="text-sm font-medium">{toastMessage}</span>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Header Banner */}
@@ -956,8 +958,11 @@ const InterviewPrep: React.FC = () => {
       </div>
 
       {/* 6. Question Details Modal / Popup */}
-      {detailModalItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+      {detailModalItem && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+          onClick={() => setDetailModalItem(null)}
+        >
           <div
             className="bg-white dark:bg-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
@@ -1053,12 +1058,16 @@ const InterviewPrep: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 8. Edit Question Modal */}
-      {editModalItem && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+      {editModalItem && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+          onClick={() => setEditModalItem(null)}
+        >
           <div
             className="bg-white dark:bg-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-5"
             onClick={(e) => e.stopPropagation()}
@@ -1159,12 +1168,16 @@ const InterviewPrep: React.FC = () => {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 9. Delete Confirmation Modal */}
-      {deleteConfirmId && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+      {deleteConfirmId && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+          onClick={() => setDeleteConfirmId(null)}
+        >
           <div
             className="bg-white dark:bg-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-4"
             onClick={(e) => e.stopPropagation()}
@@ -1193,12 +1206,16 @@ const InterviewPrep: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 10. Paste JSON Modal */}
-      {isJsonModalOpen && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      {isJsonModalOpen && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+          onClick={() => setIsJsonModalOpen(false)}
+        >
           <div
             className="bg-white dark:bg-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 space-y-4"
             onClick={(e) => e.stopPropagation()}
@@ -1249,7 +1266,8 @@ const InterviewPrep: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

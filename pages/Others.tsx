@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import ImageResizer from '../components/ImageResizer';
 import UrlShortener from '../components/UrlShortener';
@@ -558,9 +559,9 @@ const Others: React.FC = () => {
       </div>
 
       {/* Routine View Modal */}
-      {showRoutineModal && routineImage && (
-         <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowRoutineModal(false)}>
-            <div className="relative max-w-5xl max-h-[90vh]">
+      {showRoutineModal && routineImage && typeof document !== 'undefined' && createPortal(
+         <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowRoutineModal(false)}>
+            <div className="relative max-w-5xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
                <img src={routineImage} alt="Full Routine" className="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
                <div className="absolute top-4 right-4 flex gap-2">
                   <button onClick={downloadRoutine} className="w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors" title="Download">
@@ -571,7 +572,8 @@ const Others: React.FC = () => {
                   </button>
                </div>
             </div>
-         </div>
+         </div>,
+         document.body
       )}
 
     </div>

@@ -89,17 +89,30 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
       localStorage.removeItem('local_notifications');
   };
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handleDeleteAccount = async () => {
-      const confirmText = prompt("Type 'DELETE' to permanently erase all database collections (Users, Tasks, Habits, Notes) and reset the app.");
-      if (confirmText === 'DELETE') {
-          // Hard Reset Firestore & LocalStorage
-          await clearFullDatabase(); 
-          // Logout/Reload
-          onLogout();
-          window.location.reload(); 
-      } else {
-          alert("Deletion cancelled. You must type 'DELETE' exactly.");
+    const confirmText = prompt("Type 'DELETE' to permanently erase all cloud Firestore collections and local data (Tasks, Habits, Notes, etc.) and reset the app.");
+    if (confirmText === 'DELETE') {
+      try {
+        setIsDeleting(true);
+        // Hard Reset Firestore & LocalStorage
+        await clearFullDatabase(); 
+        alert("Database has been completely cleared and wiped.");
+        // Logout/Reload
+        onLogout();
+        window.location.reload(); 
+      } catch (err) {
+        console.error("Failed to delete full database:", err);
+        alert("Encountered an issue clearing the database, but local storage was cleared.");
+        onLogout();
+        window.location.reload();
+      } finally {
+        setIsDeleting(false);
       }
+    } else if (confirmText !== null) {
+      alert("Deletion cancelled. You must type 'DELETE' exactly.");
+    }
   };
 
   const ToggleSwitch = ({ checked, onChange, label, disabled }: { checked: boolean; onChange: () => void; label: string; disabled?: boolean }) => (
@@ -266,13 +279,29 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                 )}
 
                 <div className="border-t border-slate-100 dark:border-slate-700 pt-8 mt-8">
-                  <h3 className="text-xl font-bold text-red-600 mb-2">Danger Zone</h3>
-                  <p className="text-sm text-slate-500 mb-4">Permanently delete your account and wipe all local data (Habits, Todos, Notes).</p>
+                  <h3 className="text-xl font-bold text-red-600 mb-2 flex items-center gap-2">
+                    <i className="fa-solid fa-triangle-exclamation"></i>
+                    Danger Zone
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                    Permanently delete all database collections from Firestore and wipe all stored user data (Habits, Todos, Notes, Interviews, Tool data).
+                  </p>
                   <button 
                     onClick={handleDeleteAccount}
-                    className="px-6 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+                    disabled={isDeleting}
+                    className="px-6 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg font-bold hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors disabled:opacity-50 flex items-center gap-2"
                   >
-                    Delete Entire Account
+                    {isDeleting ? (
+                      <>
+                        <i className="fa-solid fa-spinner fa-spin"></i>
+                        <span>Wiping Full Database...</span>
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-trash-can"></i>
+                        <span>Delete & Wipe Full Database</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
