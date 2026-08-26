@@ -95,8 +95,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
       } else if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
         const currentDomain = window.location.hostname;
         setError(`Google Sign-In is only enabled on AI Studio preview links (*.run.app). On Vercel (${currentDomain}), please sign in with Email & Password below.`);
-      } else if (err?.code === 'auth/operation-not-allowed') {
-        setError('Google Sign-In is not enabled in Firebase Console settings. Please sign in with Email & Password.');
+      } else if (err?.code === 'auth/operation-not-allowed' || err?.code === 'auth/configuration-not-found' || err?.message?.includes('configuration-not-found')) {
+        setError('Google Sign-In is not enabled in your Firebase Console. Please go to console.firebase.google.com -> Authentication -> Sign-in method and enable Google, or sign in below with Email & Password.');
       } else {
         const rawMsg = err?.message || 'Google authentication failed.';
         const cleanMsg = rawMsg.replace(/^Firebase:\s*Error\s*\(auth\//i, '').replace(/\)\.?$/, '').replace(/-/g, ' ');
