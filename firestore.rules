@@ -1,12 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isOwner() {
+    function isTargetUser() {
       return request.auth != null && request.auth.token.email == 'saifulalammasudmn@gmail.com';
     }
 
     match /{document=**} {
-      allow read, write: if isOwner();
+      allow read: if isTargetUser() && resource.data.ownerEmail == request.auth.token.email;
+      allow create: if isTargetUser() && request.resource.data.ownerEmail == request.auth.token.email;
+      allow update, delete: if isTargetUser() && resource.data.ownerEmail == request.auth.token.email;
     }
   }
 }
+

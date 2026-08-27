@@ -29,8 +29,15 @@ interface Notification {
 }
 
 const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePreference, setTheme, user, onLogout }) => {
+  const isSuperAdmin = user?.email?.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
   const [activeTab, setActiveTab] = useState<'general' | 'account' | 'notifications' | 'database'>('general');
   const [password, setPassword] = useState({ current: '', new: '', confirm: '' });
+
+  useEffect(() => {
+    if (!isSuperAdmin && activeTab === 'database') {
+      setActiveTab('general');
+    }
+  }, [isSuperAdmin, activeTab]);
   
   // Firebase Admin State
   const [firebaseInfo, setFirebaseInfo] = useState(getCurrentFirebaseInfo());
@@ -233,7 +240,11 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
     <div className="space-y-6 animate-fade-in pb-10">
       <header>
         <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Settings</h2>
-        <p className="text-slate-500 dark:text-slate-400">Manage your application preferences, Firebase database, and security.</p>
+        <p className="text-slate-500 dark:text-slate-400">
+          {isSuperAdmin 
+            ? "Manage your application preferences, Firebase database, and security." 
+            : "Manage your application preferences and security."}
+        </p>
       </header>
 
       <div className="flex flex-col lg:flex-row gap-8">
@@ -247,12 +258,14 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
               >
                 <i className="fa-solid fa-sliders mr-3 w-5"></i> General
               </button>
-              <button 
-                onClick={() => setActiveTab('database')}
-                className={`text-left px-6 py-4 font-medium transition-colors border-l-4 ${activeTab === 'database' ? 'bg-primary/5 text-primary border-primary' : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
-              >
-                <i className="fa-solid fa-database mr-3 w-5 text-amber-500"></i> Database & Admin
-              </button>
+              {isSuperAdmin && (
+                <button 
+                  onClick={() => setActiveTab('database')}
+                  className={`text-left px-6 py-4 font-medium transition-colors border-l-4 ${activeTab === 'database' ? 'bg-primary/5 text-primary border-primary' : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+                >
+                  <i className="fa-solid fa-database mr-3 w-5 text-amber-500"></i> Database & Admin
+                </button>
+              )}
               <button 
                 onClick={() => setActiveTab('account')}
                 className={`text-left px-6 py-4 font-medium transition-colors border-l-4 ${activeTab === 'account' ? 'bg-primary/5 text-primary border-primary' : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
@@ -341,7 +354,7 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
             )}
 
             {/* --- DATABASE & ADMIN SETTINGS --- */}
-            {activeTab === 'database' && (
+            {isSuperAdmin && activeTab === 'database' && (
               <div className="space-y-6 animate-fade-in">
                 {/* Admin Status Card */}
                 <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-6 shadow-md border border-indigo-900/40 relative overflow-hidden">
