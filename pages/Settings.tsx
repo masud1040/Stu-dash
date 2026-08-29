@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../App';
 import { 
+  deleteCurrentUserData,
   clearFullDatabase, 
   getCurrentFirebaseInfo, 
   saveCustomFirebaseConfig, 
@@ -117,17 +118,17 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDeleteAccount = async () => {
-    const confirmText = prompt("Type 'DELETE' to permanently erase all cloud Firestore collections and local data (Tasks, Habits, Notes, etc.) and reset the app.");
+    const confirmText = prompt("Type 'DELETE' to permanently erase your account data (Tasks, Habits, Notes, etc.) and reset your local session.");
     if (confirmText === 'DELETE') {
       try {
         setIsDeleting(true);
-        await clearFullDatabase(); 
-        alert("Database has been completely cleared and wiped.");
+        await deleteCurrentUserData(user?.email, user?.id); 
+        alert("Your account data has been permanently deleted.");
         onLogout();
         window.location.reload(); 
       } catch (err) {
-        console.error("Failed to delete full database:", err);
-        alert("Encountered an issue clearing the database, but local storage was cleared.");
+        console.error("Failed to delete user account data:", err);
+        alert("Encountered an issue deleting account data, but local storage was cleared.");
         onLogout();
         window.location.reload();
       } finally {
@@ -568,7 +569,7 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                     Danger Zone
                   </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                    Permanently delete all database collections from Firestore and wipe all stored user data (Habits, Todos, Notes, Interviews, Tool data).
+                    Permanently delete your account data from Firestore and wipe your stored local data (Habits, Todos, Notes, Interviews, Tool data).
                   </p>
                   <button 
                     onClick={handleDeleteAccount}
@@ -578,12 +579,12 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                     {isDeleting ? (
                       <>
                         <i className="fa-solid fa-spinner fa-spin"></i>
-                        <span>Wiping Full Database...</span>
+                        <span>Deleting Account Data...</span>
                       </>
                     ) : (
                       <>
                         <i className="fa-solid fa-trash-can"></i>
-                        <span>Delete & Wipe Full Database</span>
+                        <span>Delete My Account Data</span>
                       </>
                     )}
                   </button>

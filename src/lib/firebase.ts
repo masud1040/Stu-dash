@@ -228,6 +228,29 @@ export async function fetchAllCloudDataToLocal(userEmail: string): Promise<{ suc
   }
 }
 
+export async function deleteCurrentUserData(userEmail?: string, userId?: string) {
+  try {
+    if (userEmail && !userEmail.includes('guest')) {
+      const userDocRef = doc(db, 'user_data', userEmail);
+      await deleteDoc(userDocRef);
+    }
+    if (userId) {
+      const uRef = doc(db, 'users', userId);
+      await deleteDoc(uRef);
+    }
+
+    localStorage.clear();
+    sessionStorage.clear();
+    console.log('User account data deleted successfully.');
+    return true;
+  } catch (err) {
+    console.error('Error deleting user account data:', err);
+    localStorage.clear();
+    sessionStorage.clear();
+    return false;
+  }
+}
+
 export async function clearFullDatabase() {
   const collectionsToClear = [
     'users',

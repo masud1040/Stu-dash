@@ -75,11 +75,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser = result.user;
       const userObj: User = {
-        name: fbUser.displayName || 'Google Scholar',
-        email: fbUser.email || 'scholar.google@example.com',
+        name: fbUser.displayName || 'Saiful Alam Masud',
+        email: fbUser.email || 'saifulalammasudmn@gmail.com',
         university: 'Global University',
         course: 'Data Science',
-        avatar: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || 'Google Scholar')}&background=171717&color=fff`,
+        avatar: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || 'Saiful Alam Masud')}&background=171717&color=fff`,
         isGoogle: true
       };
 
@@ -90,13 +90,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
     } catch (err: any) {
       console.error('Google Auth error:', err);
       if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-        // User voluntarily closed or cancelled the popup window
-        setError('Sign-in popup was closed before completing.');
+        setError('গুগল লগইন পপআপটি স্বয়ংক্রিয়ভাবে বন্ধ হয়ে গেছে। মোবাইল ব্রাউজারে পপআপ ব্লক থাকলে নিচে আপনার ইমেইল ও যেকোনো পাসওয়ার্ড দিয়ে সাইন-ইন করুন।');
       } else if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
         const currentDomain = window.location.hostname;
-        setError(`This domain (${currentDomain}) is not authorized for Google Sign-In in your Firebase Console. Go to console.firebase.google.com -> Authentication -> Settings -> Authorized domains and add "${currentDomain}", or simply sign in below with Email & Password.`);
+        setError(`Firebase Console-এ ডোমেইন অনুমোদিত নয়। console.firebase.google.com -> Authentication -> Settings -> Authorized domains-এ "${currentDomain}" যোগ করুন, অথবা নিচে সরাসরি Email & Password দিয়ে লগইন করুন।`);
       } else if (err?.code === 'auth/operation-not-allowed' || err?.code === 'auth/configuration-not-found' || err?.message?.includes('configuration-not-found')) {
-        setError('Google Sign-In is not enabled in your Firebase Console. Please go to console.firebase.google.com -> Authentication -> Sign-in method and enable Google, or sign in below with Email & Password.');
+        setError('Firebase Console-এ Google Sign-In চালু (Enable) করা নেই। নিচে Email & Password দিয়ে লগইন করতে পারেন।');
       } else {
         const rawMsg = err?.message || 'Google authentication failed.';
         const cleanMsg = rawMsg.replace(/^Firebase:\s*Error\s*\(auth\//i, '').replace(/\)\.?$/, '').replace(/-/g, ' ');
