@@ -357,13 +357,49 @@ const GlobalTimer = () => {
 };
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isGuest, setIsGuest] = useState(false);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem('student_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && (parsed.email || parsed.name)) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse student_user from localStorage', e);
+    }
+    return null;
+  });
+
+  const [isGuest, setIsGuest] = useState<boolean>(() => {
+    return localStorage.getItem('is_guest') === 'true';
+  });
+
+  const [authInitialized, setAuthInitialized] = useState<boolean>(() => {
+    // If we already have a session in localStorage, immediately allow rendering without flashing LandingPage
+    return !!localStorage.getItem('student_user') || localStorage.getItem('is_guest') === 'true';
+  });
+
   const [isLoadingExplore, setIsLoadingExplore] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMessage, setAuthModalMessage] = useState('');
 
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    const validPages: Page[] = ['dashboard', 'study', 'habits', 'resources', 'todo', 'notes', 'analytics', 'profile', 'settings', 'others', 'interview', 'passwords'];
+    const saved = localStorage.getItem('current_page') as Page;
+    if (saved && validPages.includes(saved)) {
+      return saved;
+    }
+    return 'dashboard';
+  });
+
+  // Keep currentPage synced to localStorage so browser refresh stays on the same page
+  useEffect(() => {
+    if (currentPage) {
+      localStorage.setItem('current_page', currentPage);
+    }
+  }, [currentPage]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [themePreference, setThemePreference] = useState<'light' | 'dark' | 'system'>(() => {
@@ -392,25 +428,59 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const cloudProfile = await getUserDataFromFirestore(firebaseUser.email || '');
-        const storedUser = localStorage.getItem('student_user');
-        let localObj = storedUser ? JSON.parse(storedUser) : null;
+      try {
+        if (firebaseUser) {
+          const cloudProfile = await getUserDataFromFirestore(firebaseUser.email || '');
+          const storedUser = localStorage.getItem('student_user');
+          let localObj: User | null = null;
+          if (storedUser) {
+            try {
+              localObj = JSON.parse(storedUser);
+            } catch (e) {}
+          }
 
-        const userObj: User = cloudProfile || localObj || {
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Student',
-          email: firebaseUser.email || 'student@studydash.com',
-          university: 'Tech University',
-          course: 'Computer Science',
-          avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName || 'Student')}&background=171717&color=fff`,
-        };
-        setUser(userObj);
-        setIsGuest(false);
-        localStorage.setItem('student_user', JSON.stringify(userObj));
-      } else {
-        setUser(null);
+          const userObj: User = cloudProfile || (localObj?.email === firebaseUser.email ? localObj : null) || {
+            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Student',
+            email: firebaseUser.email || 'student@studydash.com',
+            university: 'Tech University',
+            course: 'Computer Science',
+            avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName || 'Student')}&background=171717&color=fff`,
+            isGoogle: !!firebaseUser.providerData?.some(p => p.providerId === 'google.com'),
+          };
+          setUser(userObj);
+          setIsGuest(false);
+          localStorage.setItem('student_user', JSON.stringify(userObj));
+          localStorage.removeItem('is_guest');
+        } else {
+          // If Firebase has no active firebaseUser, check if there is a valid stored user in localStorage
+          // (e.g. Email/Password sign-in, local fallback, or cached session)
+          const storedUser = localStorage.getItem('student_user');
+          if (storedUser) {
+            try {
+              const parsed = JSON.parse(storedUser);
+              if (parsed && (parsed.email || parsed.name)) {
+                setUser(parsed);
+                setIsGuest(false);
+              } else {
+                setUser(null);
+              }
+            } catch (e) {
+              setUser(null);
+            }
+          } else {
+            setUser(null);
+          }
+        }
+      } catch (err) {
+        console.error('Auth state check error:', err);
+      } finally {
+        setAuthInitialized(true);
       }
     });
+
+    const timeout = setTimeout(() => {
+      setAuthInitialized(true);
+    }, 1200);
 
     // Resize Handler
     const handleResize = () => {
@@ -427,6 +497,7 @@ const App: React.FC = () => {
     window.addEventListener('resize', handleResize);
     return () => {
       unsubscribe();
+      clearTimeout(timeout);
       window.removeEventListener('resize', handleResize);
     };
   }, []);
@@ -486,6 +557,11 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+    localStorage.setItem('student_user', JSON.stringify(updatedUser));
+  };
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -493,8 +569,10 @@ const App: React.FC = () => {
       console.error('Sign out error:', err);
     }
     localStorage.removeItem('student_user');
+    localStorage.removeItem('is_guest');
+    localStorage.removeItem('current_page');
     setUser(null);
-    setIsGuest(true);
+    setIsGuest(false);
     setCurrentPage('dashboard');
   };
 
@@ -508,8 +586,19 @@ const App: React.FC = () => {
     return true;
   };
 
-  // If neither logged in nor guest, show Landing Page
+  // If neither logged in nor guest, show Landing Page or initial loader
   if (!user && !isGuest) {
+    if (!authInitialized) {
+      return (
+        <div className="fixed inset-0 bg-white dark:bg-slate-900 z-50 flex flex-col items-center justify-center animate-fade-in">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-2xl font-bold shadow-xl shadow-indigo-500/30 animate-pulse mb-4">
+            <i className="fa-solid fa-graduation-cap"></i>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 tracking-widest uppercase font-semibold">Loading StudyDash...</p>
+        </div>
+      );
+    }
+
     if (isLoadingExplore) {
       return (
         <div className="fixed inset-0 bg-white dark:bg-slate-900 z-50 flex flex-col items-center justify-center animate-fade-in">
@@ -533,7 +622,8 @@ const App: React.FC = () => {
             setTimeout(() => {
               setIsLoadingExplore(false);
               setIsGuest(true);
-            }, 900);
+              localStorage.setItem('is_guest', 'true');
+            }, 600);
           }}
           onOpenAuth={() => setShowAuthModal(true)}
         />
@@ -543,6 +633,8 @@ const App: React.FC = () => {
           onLogin={(u) => {
             setUser(u);
             setIsGuest(false);
+            localStorage.setItem('student_user', JSON.stringify(u));
+            localStorage.removeItem('is_guest');
             setShowAuthModal(false);
           }}
           message={authModalMessage}
@@ -568,7 +660,7 @@ const App: React.FC = () => {
       case 'todo': return <Todo />;
       case 'notes': return <Notes />;
       case 'analytics': return <Analytics />;
-      case 'profile': return <Profile user={activeUser} onUpdateUser={setUser} onLogout={handleLogout} />;
+      case 'profile': return <Profile user={activeUser} onUpdateUser={handleUpdateUser} onLogout={handleLogout} />;
       case 'others': return <Others />;
       case 'settings': return <Settings darkMode={darkMode} toggleDarkMode={toggleDarkMode} themePreference={themePreference} setTheme={setTheme} user={activeUser} onLogout={handleLogout} />;
       case 'interview': return <InterviewPrep />;
@@ -788,6 +880,8 @@ const App: React.FC = () => {
         onLogin={(u) => {
           setUser(u);
           setIsGuest(false);
+          localStorage.setItem('student_user', JSON.stringify(u));
+          localStorage.removeItem('is_guest');
           setShowAuthModal(false);
         }}
         message={authModalMessage}
