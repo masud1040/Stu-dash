@@ -6,11 +6,18 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isAuthenticated() && request.auth.token.email == 'saifulalammasudmn@gmail.com';
+      return isAuthenticated() && (
+        request.auth.token.email == 'saifulalammasudmn@gmail.com' ||
+        request.auth.token.email.lower() == 'saifulalammasudmn@gmail.com'
+      );
     }
 
     function isOwner(userEmail) {
-      return isAuthenticated() && (request.auth.token.email == userEmail || isSuperAdmin());
+      return isAuthenticated() && (
+        request.auth.token.email == userEmail ||
+        request.auth.token.email.lower() == userEmail.lower() ||
+        isSuperAdmin()
+      );
     }
 
     // User data documents (milestones, notes, habits, todos, etc.)

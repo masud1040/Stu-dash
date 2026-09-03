@@ -139,10 +139,11 @@ export async function getUserDataFromFirestore(userId: string) {
   return null;
 }
 
-// Sync all app local data into Firestore in one shot
+// Sync all app local data into Firestore for the current user
 export async function syncAllLocalDataToFirestore(userEmail: string): Promise<{ success: boolean; count: number }> {
-  if (!userEmail || userEmail.includes('guest')) {
-    userEmail = SUPER_ADMIN_EMAIL;
+  const email = (userEmail || auth.currentUser?.email || '').trim().toLowerCase();
+  if (!email || email.includes('guest')) {
+    throw new Error('Please sign in with your account to sync data to the cloud.');
   }
 
   const keysToSync = [
@@ -152,6 +153,8 @@ export async function syncAllLocalDataToFirestore(userEmail: string): Promise<{ 
     'subjects',
     'study_sessions',
     'study_assignments',
+    'meetings',
+    'resources',
     'interview_questions',
     'interview_tags',
     'study_roadmap_milestones',
@@ -164,8 +167,8 @@ export async function syncAllLocalDataToFirestore(userEmail: string): Promise<{ 
 
   const payload: Record<string, any> = {
     updatedAt: new Date().toISOString(),
-    adminEmail: SUPER_ADMIN_EMAIL,
-    lastSyncedBy: userEmail
+    ownerEmail: email,
+    lastSyncedBy: email
   };
 
   let count = 0;
@@ -182,38 +185,41 @@ export async function syncAllLocalDataToFirestore(userEmail: string): Promise<{ 
   }
 
   try {
-    const docRef = doc(db, 'user_data', userEmail);
+    const docRef = doc(db, 'user_data', email);
     await setDoc(docRef, payload, { merge: true });
 
-    // Also sync admin metadata
-    const adminDocRef = doc(db, 'admin_metadata', 'system');
-    await setDoc(adminDocRef, {
-      superAdmin: SUPER_ADMIN_EMAIL,
-      lastSyncTime: new Date().toISOString(),
-      syncedKeys: Object.keys(payload)
-    }, { merge: true });
+    // Only update system admin metadata if this is the super admin
+    if (email === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      const adminDocRef = doc(db, 'admin_metadata', 'system');
+      await setDoc(adminDocRef, {
+        superAdmin: SUPER_ADMIN_EMAIL,
+        lastSyncTime: new Date().toISOString(),
+        syncedKeys: Object.keys(payload)
+      }, { merge: true });
+    }
 
     return { success: true, count };
   } catch (err) {
-    console.error('Error syncing all local data to Firestore:', err);
+    console.error('Error syncing local data to Firestore:', err);
     throw err;
   }
 }
 
-// Pull all cloud data from Firestore and populate localStorage
+// Pull all cloud data from Firestore for the current user and populate localStorage
 export async function fetchAllCloudDataToLocal(userEmail: string): Promise<{ success: boolean; count: number }> {
-  if (!userEmail || userEmail.includes('guest')) {
-    userEmail = SUPER_ADMIN_EMAIL;
+  const email = (userEmail || auth.currentUser?.email || '').trim().toLowerCase();
+  if (!email || email.includes('guest')) {
+    throw new Error('Please sign in with your account to pull data from the cloud.');
   }
 
   try {
-    const docRef = doc(db, 'user_data', userEmail);
+    const docRef = doc(db, 'user_data', email);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data();
       let count = 0;
       for (const [key, val] of Object.entries(data)) {
-        if (key !== 'updatedAt' && key !== 'adminEmail' && key !== 'lastSyncedBy') {
+        if (key !== 'updatedAt' && key !== 'adminEmail' && key !== 'ownerEmail' && key !== 'lastSyncedBy') {
           localStorage.setItem(key, typeof val === 'object' ? JSON.stringify(val) : String(val));
           count++;
         }

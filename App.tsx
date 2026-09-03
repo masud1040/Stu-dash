@@ -14,6 +14,7 @@ import PasswordManager from './components/PasswordManager';
 import LandingPage from './components/LandingPage';
 import AuthModal from './components/AuthModal';
 import { auth, getUserDataFromFirestore } from './src/lib/firebase';
+import { loadUserDataForUser, clearUserLocalData } from './src/lib/dbSync';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 // Types
@@ -451,6 +452,7 @@ const App: React.FC = () => {
           setIsGuest(false);
           localStorage.setItem('student_user', JSON.stringify(userObj));
           localStorage.removeItem('is_guest');
+          await loadUserDataForUser(userObj.email);
         } else {
           // If Firebase has no active firebaseUser, check if there is a valid stored user in localStorage
           // (e.g. Email/Password sign-in, local fallback, or cached session)
@@ -568,6 +570,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error('Sign out error:', err);
     }
+    clearUserLocalData();
     localStorage.removeItem('student_user');
     localStorage.removeItem('is_guest');
     localStorage.removeItem('current_page');
@@ -630,11 +633,12 @@ const App: React.FC = () => {
         <AuthModal 
           isOpen={showAuthModal}
           onClose={() => setShowAuthModal(false)}
-          onLogin={(u) => {
+          onLogin={async (u) => {
             setUser(u);
             setIsGuest(false);
             localStorage.setItem('student_user', JSON.stringify(u));
             localStorage.removeItem('is_guest');
+            await loadUserDataForUser(u.email);
             setShowAuthModal(false);
           }}
           message={authModalMessage}
@@ -877,11 +881,12 @@ const App: React.FC = () => {
       <AuthModal 
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-        onLogin={(u) => {
+        onLogin={async (u) => {
           setUser(u);
           setIsGuest(false);
           localStorage.setItem('student_user', JSON.stringify(u));
           localStorage.removeItem('is_guest');
+          await loadUserDataForUser(u.email);
           setShowAuthModal(false);
         }}
         message={authModalMessage}

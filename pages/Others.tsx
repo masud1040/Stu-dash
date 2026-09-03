@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import ImageResizer from '../components/ImageResizer';
 import UrlShortener from '../components/UrlShortener';
 import CvMakerCard from '../components/CvMakerCard';
+import { saveCloudData, fetchCloudData } from '../src/lib/dbSync';
 
 interface Meeting {
   id: string;
@@ -50,14 +51,17 @@ const Others: React.FC = () => {
   // --- Effects ---
   useEffect(() => {
     // Load all persisted data
-    const savedRoutine = localStorage.getItem('class_routine');
-    if (savedRoutine) setRoutineImage(savedRoutine);
+    fetchCloudData('', 'class_routine', '').then(data => {
+      if (data) setRoutineImage(data);
+    });
 
-    const savedMeetings = localStorage.getItem('meetings');
-    if (savedMeetings) setMeetings(JSON.parse(savedMeetings));
+    fetchCloudData('', 'meetings', []).then(data => {
+      if (data && Array.isArray(data)) setMeetings(data);
+    });
 
-    const savedCV = localStorage.getItem('student_cv');
-    if (savedCV) setCvData(JSON.parse(savedCV));
+    fetchCloudData('', 'student_cv', null).then(data => {
+      if (data) setCvData(data);
+    });
   }, []);
 
   useEffect(() => {
@@ -107,7 +111,7 @@ const Others: React.FC = () => {
       reader.onloadend = () => {
         const base64 = reader.result as string;
         setRoutineImage(base64);
-        localStorage.setItem('class_routine', base64);
+        saveCloudData('', 'class_routine', base64);
       };
       reader.readAsDataURL(file);
     }
@@ -116,7 +120,7 @@ const Others: React.FC = () => {
   const deleteRoutine = () => {
     if(confirm("Remove class routine image?")) {
         setRoutineImage(null);
-        localStorage.removeItem('class_routine');
+        saveCloudData('', 'class_routine', '');
     }
   };
 
@@ -150,7 +154,7 @@ const Others: React.FC = () => {
                   uploadDate: new Date().toLocaleDateString()
               };
               setCvData(newData);
-              localStorage.setItem('student_cv', JSON.stringify(newData));
+              saveCloudData('', 'student_cv', newData);
           };
           reader.readAsDataURL(file);
       }
@@ -159,7 +163,7 @@ const Others: React.FC = () => {
   const deleteCV = () => {
       if(confirm("Delete your CV?")) {
           setCvData(null);
-          localStorage.removeItem('student_cv');
+          saveCloudData('', 'student_cv', null);
       }
   };
 
@@ -188,8 +192,7 @@ const Others: React.FC = () => {
           type: formData.type as any
         };
         const updated = [...prev, newEvent].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        localStorage.setItem('meetings', JSON.stringify(updated));
-        window.dispatchEvent(new Event('storage'));
+        saveCloudData('', 'meetings', updated);
         return updated;
     });
     
@@ -201,8 +204,7 @@ const Others: React.FC = () => {
     if(confirm("Delete this event?")) {
         setMeetings(prev => {
             const updated = prev.filter(m => m.id !== id);
-            localStorage.setItem('meetings', JSON.stringify(updated));
-            window.dispatchEvent(new Event('storage'));
+            saveCloudData('', 'meetings', updated);
             return updated;
         });
     }

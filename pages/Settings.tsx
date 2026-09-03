@@ -141,10 +141,14 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
 
   // Sync All Data to Firestore
   const handleSyncAllToCloud = async () => {
+    if (!user?.email || user.email.includes('guest')) {
+      setSyncStatusMsg('❌ ক্লাউডে ব্যাকআপ বা সিঙ্ক করতে অনুগ্রহ করে প্রথমে সাইন ইন করুন।');
+      return;
+    }
     try {
       setIsSyncing(true);
       setSyncStatusMsg(null);
-      const res = await syncAllLocalDataToFirestore(user.email || SUPER_ADMIN_EMAIL);
+      const res = await syncAllLocalDataToFirestore(user.email);
       setSyncStatusMsg(`✅ Successfully synced ${res.count} modules to Firestore!`);
     } catch (err: any) {
       setSyncStatusMsg(`❌ Sync error: ${err?.message || 'Failed to sync data'}`);
@@ -155,10 +159,14 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
 
   // Fetch All Cloud Data to Local
   const handleFetchAllFromCloud = async () => {
+    if (!user?.email || user.email.includes('guest')) {
+      setSyncStatusMsg('❌ ক্লাউড থেকে ডেটা রিস্টোর করতে অনুগ্রহ করে প্রথমে সাইন ইন করুন।');
+      return;
+    }
     try {
       setIsSyncing(true);
       setSyncStatusMsg(null);
-      const res = await fetchAllCloudDataToLocal(user.email || SUPER_ADMIN_EMAIL);
+      const res = await fetchAllCloudDataToLocal(user.email);
       setSyncStatusMsg(`✅ Successfully retrieved and restored ${res.count} data items from Firestore!`);
       setTimeout(() => {
         window.location.reload();

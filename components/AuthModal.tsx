@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../App';
 import { auth, googleProvider, syncUserDataToFirestore } from '../src/lib/firebase';
+import { loadUserDataForUser } from '../src/lib/dbSync';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 
 interface AuthModalProps {
@@ -44,6 +45,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
       };
 
       await syncUserDataToFirestore(userObj.email, userObj);
+      await loadUserDataForUser(userObj.email);
       localStorage.setItem('student_user', JSON.stringify(userObj));
       onLogin(userObj);
       onClose();
@@ -60,6 +62,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
       };
 
       syncUserDataToFirestore(userObj.email, userObj).catch(() => {});
+      await loadUserDataForUser(userObj.email);
       localStorage.setItem('student_user', JSON.stringify(userObj));
       onLogin(userObj);
       onClose();
@@ -74,16 +77,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onLogin, 
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser = result.user;
+      const userName = fbUser.displayName || fbUser.email?.split('@')[0] || 'Student';
+      const userEmail = fbUser.email || 'student@studydash.com';
       const userObj: User = {
-        name: fbUser.displayName || 'Saiful Alam Masud',
-        email: fbUser.email || 'saifulalammasudmn@gmail.com',
+        name: userName,
+        email: userEmail,
         university: 'Global University',
-        course: 'Data Science',
-        avatar: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(fbUser.displayName || 'Saiful Alam Masud')}&background=171717&color=fff`,
+        course: 'Computer Science',
+        avatar: fbUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=171717&color=fff`,
         isGoogle: true
       };
 
       await syncUserDataToFirestore(userObj.email, userObj);
+      await loadUserDataForUser(userObj.email);
       localStorage.setItem('student_user', JSON.stringify(userObj));
       onLogin(userObj);
       onClose();

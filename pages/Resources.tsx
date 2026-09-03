@@ -12,6 +12,7 @@ import {
   ArcElement
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
+import { fetchCloudData, saveCloudData } from '../src/lib/dbSync';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
@@ -56,21 +57,18 @@ const Resources: React.FC = () => {
 
   // --- Effects ---
   useEffect(() => {
-    const saved = localStorage.getItem('resources');
-    if (saved) {
-      try {
-        setResources(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to parse resources", e);
+    fetchCloudData('', 'resources', []).then(data => {
+      if (data && Array.isArray(data)) {
+        setResources(data);
       }
-    }
+    });
   }, []);
 
   const updateResources = (updater: (prev: Resource[]) => Resource[]) => {
     try {
       setResources(prev => {
         const updated = updater(prev);
-        localStorage.setItem('resources', JSON.stringify(updated));
+        saveCloudData('', 'resources', updated);
         return updated;
       });
     } catch (e) {
