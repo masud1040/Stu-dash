@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { fetchCloudData, saveCloudData } from '../src/lib/dbSync';
 
 export interface Milestone {
@@ -41,16 +41,32 @@ const DEFAULT_MILESTONES: Milestone[] = [
 ];
 
 export const StudyRoadmap: React.FC = () => {
-  const [milestones, setMilestones] = useState<Milestone[]>(DEFAULT_MILESTONES);
+  const [milestones, setMilestones] = useState<Milestone[]>(() => {
+    try {
+      const stored = localStorage.getItem('study_roadmap_milestones');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_MILESTONES;
+  });
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newDate, setNewDate] = useState('');
+  const isInitialMount = useRef(true);
 
   useEffect(() => {
-    const userStr = localStorage.getItem('student_user');
-    const userEmail = userStr ? JSON.parse(userStr).email : 'guest';
+    let userEmail = 'guest';
+    try {
+      const userStr = localStorage.getItem('student_user');
+      if (userStr) {
+        userEmail = JSON.parse(userStr).email || 'guest';
+      }
+    } catch (e) {}
+
     fetchCloudData(userEmail, 'study_roadmap_milestones', DEFAULT_MILESTONES).then(data => {
       if (data && Array.isArray(data)) {
         setMilestones(data);
@@ -59,8 +75,17 @@ export const StudyRoadmap: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const userStr = localStorage.getItem('student_user');
-    const userEmail = userStr ? JSON.parse(userStr).email : 'guest';
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    let userEmail = 'guest';
+    try {
+      const userStr = localStorage.getItem('student_user');
+      if (userStr) {
+        userEmail = JSON.parse(userStr).email || 'guest';
+      }
+    } catch (e) {}
     saveCloudData(userEmail, 'study_roadmap_milestones', milestones);
   }, [milestones]);
 
