@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User } from '../App';
+import { User, TIMER_COLORS, DEFAULT_TAG_COLORS, TimerColorKey } from '../App';
 import { deleteCurrentUserData } from '../src/lib/firebase';
 
 interface SettingsProps {
@@ -31,6 +31,35 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
   });
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  // Focus Timer Settings State
+  const [timerTag, setTimerTag] = useState<string>(() => {
+    return localStorage.getItem('global_timer_tag') || 'Study';
+  });
+  const [timerTagColors, setTimerTagColors] = useState<Record<string, TimerColorKey>>(() => {
+    try {
+      const saved = localStorage.getItem('global_timer_tag_colors');
+      return saved ? { ...DEFAULT_TAG_COLORS, ...JSON.parse(saved) } : DEFAULT_TAG_COLORS;
+    } catch {
+      return DEFAULT_TAG_COLORS;
+    }
+  });
+
+  const handleUpdateTagColor = (tag: string, color: TimerColorKey) => {
+    const updated = { ...timerTagColors, [tag]: color };
+    setTimerTagColors(updated);
+    localStorage.setItem('global_timer_tag_colors', JSON.stringify(updated));
+    if (timerTag === tag) {
+      localStorage.setItem('global_timer_color', color);
+    }
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleSetDefaultTag = (tag: string) => {
+    setTimerTag(tag);
+    localStorage.setItem('global_timer_tag', tag);
+    window.dispatchEvent(new Event('storage'));
+  };
 
   useEffect(() => {
     // Load notification settings
@@ -199,6 +228,91 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                       </div>
                     </button>
                   ))}
+                </div>
+                
+                {/* Focus Timer Indicator Ring Settings */}
+                <div className="border-t border-slate-100 dark:border-slate-700 pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-800 dark:text-white">Focus Timer Ring Color</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Customize the circular progress indicator stroke color based on your current focus task tag.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700/60 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600">
+                      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Active:</span>
+                      <span 
+                        className="text-xs font-bold px-2 py-0.5 rounded-md text-white shadow-2xs"
+                        style={{ backgroundColor: TIMER_COLORS[timerTagColors[timerTag] || 'indigo'].hex }}
+                      >
+                        {timerTag}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                    {Object.keys(DEFAULT_TAG_COLORS).map((tName) => {
+                      const assignedColorKey = timerTagColors[tName] || DEFAULT_TAG_COLORS[tName] || 'indigo';
+                      const colorConfig = TIMER_COLORS[assignedColorKey] || TIMER_COLORS.indigo;
+                      const isCurrent = timerTag === tName;
+
+                      return (
+                        <div 
+                          key={tName}
+                          className={`p-3.5 rounded-xl border transition-all ${
+                            isCurrent 
+                              ? 'border-slate-800 dark:border-white/80 bg-slate-50 dark:bg-slate-900/60 shadow-xs' 
+                              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSetDefaultTag(tName)}
+                              className="text-xs font-bold flex items-center gap-1.5 text-slate-800 dark:text-white hover:underline cursor-pointer"
+                              title="Set as current focus tag"
+                            >
+                              <span 
+                                className="w-2.5 h-2.5 rounded-full"
+                                style={{ backgroundColor: colorConfig.hex }}
+                              ></span>
+                              <span>{tName}</span>
+                              {isCurrent && (
+                                <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-1 rounded font-medium">
+                                  Current
+                                </span>
+                              )}
+                            </button>
+                            <span className="text-[10px] font-bold" style={{ color: colorConfig.hex }}>
+                              {colorConfig.name}
+                            </span>
+                          </div>
+
+                          {/* Color Swatches for this tag */}
+                          <div className="flex gap-1.5 items-center pt-1">
+                            {(Object.keys(TIMER_COLORS) as TimerColorKey[]).map((cKey) => {
+                              const cOpt = TIMER_COLORS[cKey];
+                              const isChecked = assignedColorKey === cKey;
+                              return (
+                                <button
+                                  key={cKey}
+                                  type="button"
+                                  onClick={() => handleUpdateTagColor(tName, cKey)}
+                                  className={`w-5 h-5 rounded-md flex items-center justify-center cursor-pointer transition-transform ${
+                                    isChecked ? 'scale-110 ring-2 ring-slate-800 dark:ring-white ring-offset-1' : 'opacity-70 hover:opacity-100'
+                                  }`}
+                                  style={{ backgroundColor: cOpt.hex }}
+                                  title={`${cOpt.label} for ${tName}`}
+                                >
+                                  {isChecked && <i className="fa-solid fa-check text-white text-[8px]"></i>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 
                 <div className="border-t border-slate-100 dark:border-slate-700 pt-6">

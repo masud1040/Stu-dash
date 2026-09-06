@@ -35,6 +35,108 @@ export interface User {
   isGoogle?: boolean;
 }
 
+// Timer Color Definitions & Configurations
+export type TimerColorKey = 'indigo' | 'emerald' | 'rose' | 'amber' | 'sky' | 'violet';
+
+export interface TimerColorOption {
+  key: TimerColorKey;
+  label: string;
+  name: string;
+  hex: string;
+  strokeClass: string;
+  bgClass: string;
+  textClass: string;
+  badgeBg: string;
+  badgeText: string;
+}
+
+export const TIMER_COLORS: Record<TimerColorKey, TimerColorOption> = {
+  indigo: {
+    key: 'indigo',
+    label: 'Indigo (Default)',
+    name: 'Indigo',
+    hex: '#6366f1',
+    strokeClass: 'text-indigo-500 dark:text-indigo-400',
+    bgClass: 'bg-indigo-600 hover:bg-indigo-700',
+    textClass: 'text-indigo-600 dark:text-indigo-400',
+    badgeBg: 'bg-indigo-100 dark:bg-indigo-950/60',
+    badgeText: 'text-indigo-700 dark:text-indigo-300'
+  },
+  emerald: {
+    key: 'emerald',
+    label: 'Emerald (Study / Focus)',
+    name: 'Emerald',
+    hex: '#10b981',
+    strokeClass: 'text-emerald-500 dark:text-emerald-400',
+    bgClass: 'bg-emerald-600 hover:bg-emerald-700',
+    textClass: 'text-emerald-600 dark:text-emerald-400',
+    badgeBg: 'bg-emerald-100 dark:bg-emerald-950/60',
+    badgeText: 'text-emerald-700 dark:text-emerald-300'
+  },
+  rose: {
+    key: 'rose',
+    label: 'Rose (Urgent / Exam)',
+    name: 'Rose',
+    hex: '#f43f5e',
+    strokeClass: 'text-rose-500 dark:text-rose-400',
+    bgClass: 'bg-rose-600 hover:bg-rose-700',
+    textClass: 'text-rose-600 dark:text-rose-400',
+    badgeBg: 'bg-rose-100 dark:bg-rose-950/60',
+    badgeText: 'text-rose-700 dark:text-rose-300'
+  },
+  amber: {
+    key: 'amber',
+    label: 'Amber (Review / Reading)',
+    name: 'Amber',
+    hex: '#f59e0b',
+    strokeClass: 'text-amber-500 dark:text-amber-400',
+    bgClass: 'bg-amber-600 hover:bg-amber-700',
+    textClass: 'text-amber-600 dark:text-amber-400',
+    badgeBg: 'bg-amber-100 dark:bg-amber-950/60',
+    badgeText: 'text-amber-700 dark:text-amber-300'
+  },
+  sky: {
+    key: 'sky',
+    label: 'Sky (Code / Project)',
+    name: 'Sky',
+    hex: '#0ea5e9',
+    strokeClass: 'text-sky-500 dark:text-sky-400',
+    bgClass: 'bg-sky-600 hover:bg-sky-700',
+    textClass: 'text-sky-600 dark:text-sky-400',
+    badgeBg: 'bg-sky-100 dark:bg-sky-950/60',
+    badgeText: 'text-sky-700 dark:text-sky-300'
+  },
+  violet: {
+    key: 'violet',
+    label: 'Violet (Creative / Writing)',
+    name: 'Violet',
+    hex: '#8b5cf6',
+    strokeClass: 'text-violet-500 dark:text-violet-400',
+    bgClass: 'bg-violet-600 hover:bg-violet-700',
+    textClass: 'text-violet-600 dark:text-violet-400',
+    badgeBg: 'bg-violet-100 dark:bg-violet-950/60',
+    badgeText: 'text-violet-700 dark:text-violet-300'
+  }
+};
+
+export const DEFAULT_TAG_COLORS: Record<string, TimerColorKey> = {
+  'Study': 'emerald',
+  'Deep Work': 'indigo',
+  'Urgent': 'rose',
+  'Reading': 'amber',
+  'Coding': 'sky',
+  'Creative': 'violet'
+};
+
+const PRESET_TAGS = [
+  { name: 'Study', icon: 'fa-graduation-cap' },
+  { name: 'Deep Work', icon: 'fa-brain' },
+  { name: 'Urgent', icon: 'fa-fire' },
+  { name: 'Reading', icon: 'fa-book-open' },
+  { name: 'Coding', icon: 'fa-laptop-code' },
+  { name: 'Creative', icon: 'fa-pen-nib' }
+];
+
 // Global Timer Component (Compact, Draggable, Circular Progress)
 const GlobalTimer = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -44,6 +146,85 @@ const GlobalTimer = () => {
     const saved = localStorage.getItem('global_timer_duration');
     return saved ? parseInt(saved, 10) : 25;
   });
+
+  // Focus Task Tag & Progress Ring Color States
+  const [focusTag, setFocusTag] = useState<string>(() => {
+    return localStorage.getItem('global_timer_tag') || 'Study';
+  });
+
+  const [tagColors, setTagColors] = useState<Record<string, TimerColorKey>>(() => {
+    try {
+      const saved = localStorage.getItem('global_timer_tag_colors');
+      return saved ? { ...DEFAULT_TAG_COLORS, ...JSON.parse(saved) } : DEFAULT_TAG_COLORS;
+    } catch {
+      return DEFAULT_TAG_COLORS;
+    }
+  });
+
+  const [customTagInput, setCustomTagInput] = useState('');
+  const [showCustomTag, setShowCustomTag] = useState(false);
+  const [taskSuggestions, setTaskSuggestions] = useState<string[]>([]);
+
+  // Compute active color from current focus task tag
+  const activeColorKey: TimerColorKey = tagColors[focusTag] || 'indigo';
+  const currentColor = TIMER_COLORS[activeColorKey] || TIMER_COLORS.indigo;
+
+  // Load contextual task suggestions from Todos & Subjects
+  useEffect(() => {
+    try {
+      const todos = JSON.parse(localStorage.getItem('todos') || '[]');
+      const subjects = JSON.parse(localStorage.getItem('subjects') || '[]');
+      const pendingTodos = todos.filter((t: any) => !t.completed).map((t: any) => t.text).slice(0, 3);
+      const subjectNames = subjects.map((s: any) => s.name).slice(0, 3);
+      const combined = Array.from(new Set([...subjectNames, ...pendingTodos])).filter(Boolean);
+      setTaskSuggestions(combined);
+    } catch {
+      // Ignore reading error
+    }
+  }, [isOpen]);
+
+  // Sync state across storage events (e.g. from Settings)
+  useEffect(() => {
+    const syncFromStorage = () => {
+      const savedTag = localStorage.getItem('global_timer_tag');
+      if (savedTag) setFocusTag(savedTag);
+      try {
+        const savedColors = localStorage.getItem('global_timer_tag_colors');
+        if (savedColors) setTagColors({ ...DEFAULT_TAG_COLORS, ...JSON.parse(savedColors) });
+      } catch {}
+    };
+    window.addEventListener('storage', syncFromStorage);
+    return () => window.removeEventListener('storage', syncFromStorage);
+  }, []);
+
+  const handleSelectTag = (tag: string) => {
+    setFocusTag(tag);
+    localStorage.setItem('global_timer_tag', tag);
+    if (!tagColors[tag]) {
+      const defaultColor = DEFAULT_TAG_COLORS[tag] || 'indigo';
+      const updated = { ...tagColors, [tag]: defaultColor };
+      setTagColors(updated);
+      localStorage.setItem('global_timer_tag_colors', JSON.stringify(updated));
+    }
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleSelectColor = (colorKey: TimerColorKey) => {
+    const updated = { ...tagColors, [focusTag]: colorKey };
+    setTagColors(updated);
+    localStorage.setItem('global_timer_tag_colors', JSON.stringify(updated));
+    localStorage.setItem('global_timer_color', colorKey);
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  const handleAddCustomTag = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customTagInput.trim()) return;
+    const cleanTag = customTagInput.trim();
+    handleSelectTag(cleanTag);
+    setCustomTagInput('');
+    setShowCustomTag(false);
+  };
 
   const [position, setPosition] = useState<{ x: number | null; y: number | null }>(() => {
     const saved = localStorage.getItem('global_timer_pos');
@@ -232,22 +413,172 @@ const GlobalTimer = () => {
       {isOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
           <div 
-            className="w-80 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-5 text-slate-800 dark:text-white animate-in zoom-in-95 duration-200"
+            className="w-96 max-w-[92vw] bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-5 text-slate-800 dark:text-white animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <i className="fa-solid fa-stopwatch text-indigo-500 text-sm"></i>
-                <h3 className="font-bold text-sm">Focus Timer</h3>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-700/80">
+              <div className="flex items-center gap-2.5">
+                <div 
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-xs text-white shadow-xs transition-colors"
+                  style={{ backgroundColor: currentColor.hex }}
+                >
+                  <i className="fa-solid fa-stopwatch"></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm leading-tight">Focus Timer</h3>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span 
+                      className="w-2 h-2 rounded-full transition-colors"
+                      style={{ backgroundColor: currentColor.hex }}
+                    ></span>
+                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      {focusTag} • <span style={{ color: currentColor.hex }} className="font-bold">{currentColor.name} Ring</span>
+                    </span>
+                  </div>
+                </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer"
               >
                 <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
 
+            {/* SETTING: Focus Task Tag & Progress Indicator Color */}
+            <div className="mb-4 bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <i className="fa-solid fa-tag text-[10px]"></i>
+                  <span>Focus Task Tag & Ring Color</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomTag(!showCustomTag)}
+                  className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  {showCustomTag ? 'Close' : '+ Custom Tag'}
+                </button>
+              </div>
+
+              {/* Preset Tags */}
+              <div className="flex flex-wrap gap-1.5">
+                {PRESET_TAGS.map((item) => {
+                  const tagColorKey = tagColors[item.name] || 'indigo';
+                  const tagColorConfig = TIMER_COLORS[tagColorKey] || TIMER_COLORS.indigo;
+                  const isSelected = focusTag === item.name;
+
+                  return (
+                    <button
+                      key={item.name}
+                      type="button"
+                      onClick={() => handleSelectTag(item.name)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'border-slate-800 dark:border-white shadow-xs font-bold text-white'
+                          : 'border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'
+                      }`}
+                      style={isSelected ? { backgroundColor: tagColorConfig.hex } : undefined}
+                    >
+                      <i className={`fa-solid ${item.icon} text-[10px]`}></i>
+                      <span>{item.name}</span>
+                      <span 
+                        className="w-1.5 h-1.5 rounded-full" 
+                        style={{ backgroundColor: isSelected ? '#ffffff' : tagColorConfig.hex }}
+                      ></span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Suggestions from User's Todos & Subjects if available */}
+              {taskSuggestions.length > 0 && (
+                <div className="pt-1">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium block mb-1">
+                    Or select from active tasks/subjects:
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {taskSuggestions.map((tName) => {
+                      const isSelected = focusTag === tName;
+                      return (
+                        <button
+                          key={tName}
+                          type="button"
+                          onClick={() => handleSelectTag(tName)}
+                          className={`text-[10px] px-2 py-0.5 rounded-md truncate max-w-[150px] transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 font-bold'
+                              : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                          }`}
+                          title={tName}
+                        >
+                          {tName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Tag Input */}
+              {showCustomTag && (
+                <form onSubmit={handleAddCustomTag} className="flex gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={customTagInput}
+                    onChange={(e) => setCustomTagInput(e.target.value)}
+                    placeholder="Enter task tag (e.g. Physics Exam)..."
+                    className="flex-1 px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    Set
+                  </button>
+                </form>
+              )}
+
+              {/* Color Swatch Selector for the current tag */}
+              <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Indicator Ring Color for <span className="font-extrabold" style={{ color: currentColor.hex }}>"{focusTag}"</span>
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ color: currentColor.hex }}>
+                    {currentColor.name}
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-6 gap-2">
+                  {(Object.keys(TIMER_COLORS) as TimerColorKey[]).map((cKey) => {
+                    const cOpt = TIMER_COLORS[cKey];
+                    const isSelected = activeColorKey === cKey;
+
+                    return (
+                      <button
+                        key={cKey}
+                        type="button"
+                        onClick={() => handleSelectColor(cKey)}
+                        className={`h-7 rounded-lg flex items-center justify-center transition-all cursor-pointer relative ${
+                          isSelected ? 'ring-2 ring-offset-2 ring-slate-800 dark:ring-white scale-105 shadow-xs' : 'hover:scale-105 opacity-80 hover:opacity-100'
+                        }`}
+                        style={{ backgroundColor: cOpt.hex }}
+                        title={`${cOpt.label} for ${focusTag}`}
+                      >
+                        {isSelected && (
+                          <i className="fa-solid fa-check text-white text-[11px] drop-shadow-xs"></i>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Duration Selector */}
             <div className="mb-4">
               <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5 block">
                 Duration (Minutes)
@@ -261,11 +592,12 @@ const GlobalTimer = () => {
                       localStorage.setItem('global_timer_duration', m.toString());
                       if (active) startTimer(m);
                     }}
-                    className={`py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       durationMinutes === m 
-                        ? 'bg-indigo-600 text-white shadow-sm' 
+                        ? 'text-white shadow-sm font-extrabold' 
                         : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                     }`}
+                    style={durationMinutes === m ? { backgroundColor: currentColor.hex } : undefined}
                   >
                     {m}m
                   </button>
@@ -273,29 +605,47 @@ const GlobalTimer = () => {
               </div>
             </div>
 
-            <div className="flex flex-col items-center justify-center py-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl mb-4 border border-slate-100 dark:border-slate-800">
-              <span className="font-mono font-bold text-2xl text-slate-800 dark:text-white mb-1">
+            {/* Countdown Display with Dynamic Color Ring Tint */}
+            <div 
+              className="flex flex-col items-center justify-center py-4 rounded-xl mb-4 border transition-colors bg-slate-50 dark:bg-slate-900/50"
+              style={{
+                borderColor: active ? `${currentColor.hex}50` : undefined,
+                backgroundColor: active ? `${currentColor.hex}08` : undefined
+              }}
+            >
+              <span 
+                className="font-mono font-bold text-3xl tracking-tight transition-colors mb-1"
+                style={{ color: active ? currentColor.hex : undefined }}
+              >
                 {formatTime(seconds)}
               </span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-                {active ? (seconds >= totalSeconds ? 'Completed!' : `${Math.round(progress * 100)}% done`) : 'Ready to focus'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span 
+                  className="w-2 h-2 rounded-full transition-colors" 
+                  style={{ backgroundColor: currentColor.hex }}
+                ></span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">
+                  {active ? (seconds >= totalSeconds ? 'Completed!' : `${Math.round(progress * 100)}% done • ${focusTag}`) : `Ready to focus on ${focusTag}`}
+                </span>
+              </div>
             </div>
 
+            {/* Action Buttons */}
             <div className="flex gap-2">
               {active ? (
                 <button
                   onClick={stopTimer}
-                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-sm"
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-sm cursor-pointer"
                 >
                   <i className="fa-solid fa-stop"></i> Stop & Reset
                 </button>
               ) : (
                 <button
                   onClick={() => startTimer()}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-sm"
+                  className="flex-1 py-2.5 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors shadow-sm cursor-pointer"
+                  style={{ backgroundColor: currentColor.hex }}
                 >
-                  <i className="fa-solid fa-play"></i> Start Focus
+                  <i className="fa-solid fa-play"></i> Start {focusTag} Focus
                 </button>
               )}
             </div>
@@ -312,11 +662,14 @@ const GlobalTimer = () => {
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
           className="cursor-grab active:cursor-grabbing p-1"
-          title="Drag to move, click to open timer"
+          title={`Focus Timer: ${focusTag} (${currentColor.name} indicator) • Drag to move, click to configure`}
         >
           <button
             onClick={() => setIsOpen(true)}
-            className="relative w-11 h-11 rounded-full bg-slate-900 dark:bg-slate-800 text-white shadow-xl hover:shadow-indigo-500/30 transition-all transform hover:scale-105 border border-slate-700 flex items-center justify-center group"
+            className="relative w-11 h-11 rounded-full bg-slate-900 dark:bg-slate-800 text-white shadow-xl transition-all transform hover:scale-105 border border-slate-700 flex items-center justify-center group cursor-pointer"
+            style={{
+              boxShadow: active ? `0 10px 25px -5px ${currentColor.hex}50` : undefined
+            }}
           >
             <svg className="w-10 h-10 transform -rotate-90 absolute">
               <circle
@@ -332,24 +685,37 @@ const GlobalTimer = () => {
                 cx="20"
                 cy="20"
                 r={radius}
-                className={`${active ? 'text-indigo-400' : 'text-slate-500'} transition-all duration-500`}
+                stroke={active ? currentColor.hex : '#64748b'}
+                className="transition-all duration-500"
                 strokeWidth="3"
                 strokeDasharray={circumference}
                 strokeDashoffset={strokeDashoffset}
                 strokeLinecap="round"
-                stroke="currentColor"
                 fill="transparent"
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               {active ? (
-                <span className="font-mono text-[9px] font-bold text-indigo-300">
+                <span 
+                  className="font-mono text-[9px] font-bold"
+                  style={{ color: currentColor.hex }}
+                >
                   {Math.max(0, durationMinutes - Math.floor(seconds / 60))}m
                 </span>
               ) : (
-                <i className="fa-solid fa-stopwatch text-xs text-slate-300 group-hover:text-indigo-400 transition-colors"></i>
+                <i 
+                  className="fa-solid fa-stopwatch text-xs transition-colors"
+                  style={{ color: currentColor.hex }}
+                ></i>
               )}
             </div>
+
+            {/* Current Tag indicator dot */}
+            <div
+              className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-slate-900 dark:border-slate-800 transition-colors shadow-xs"
+              style={{ backgroundColor: currentColor.hex }}
+              title={`Focus Tag: ${focusTag} (${currentColor.name})`}
+            ></div>
           </button>
         </div>
       </div>
