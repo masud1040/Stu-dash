@@ -408,6 +408,10 @@ const GlobalTimer = () => {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - progress * circumference;
 
+  const modalRadius = 42;
+  const modalCircumference = 2 * Math.PI * modalRadius;
+  const modalStrokeDashoffset = modalCircumference - progress * modalCircumference;
+
   return (
     <>
       {isOpen && (
@@ -605,20 +609,61 @@ const GlobalTimer = () => {
               </div>
             </div>
 
-            {/* Countdown Display with Dynamic Color Ring Tint */}
+            {/* Countdown Display with Dynamic Color Ring Tint & Circular Progress Ring */}
             <div 
-              className="flex flex-col items-center justify-center py-4 rounded-xl mb-4 border transition-colors bg-slate-50 dark:bg-slate-900/50"
+              className="relative flex flex-col items-center justify-center py-5 rounded-xl mb-4 border transition-colors bg-slate-50 dark:bg-slate-900/50 overflow-hidden"
               style={{
                 borderColor: active ? `${currentColor.hex}50` : undefined,
                 backgroundColor: active ? `${currentColor.hex}08` : undefined
               }}
             >
-              <span 
-                className="font-mono font-bold text-3xl tracking-tight transition-colors mb-1"
-                style={{ color: active ? currentColor.hex : undefined }}
-              >
-                {formatTime(seconds)}
-              </span>
+              {/* Circular Progress Ring in Modal */}
+              <div className="relative w-28 h-28 flex items-center justify-center mb-2">
+                <svg className="w-28 h-28 transform -rotate-90 absolute">
+                  <circle
+                    cx="56"
+                    cy="56"
+                    r={modalRadius}
+                    className="text-slate-200 dark:text-slate-700/60"
+                    strokeWidth="4.5"
+                    stroke="currentColor"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="56"
+                    cy="56"
+                    r={modalRadius}
+                    stroke={active ? currentColor.hex : '#94a3b8'}
+                    className={active ? 'progress-ring-smooth' : 'progress-ring-reset'}
+                    style={{
+                      transition: active 
+                        ? 'stroke-dashoffset 1s linear, stroke 0.4s ease' 
+                        : 'stroke-dashoffset 0.35s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.4s ease',
+                      willChange: 'stroke-dashoffset'
+                    }}
+                    strokeWidth="4.5"
+                    strokeDasharray={modalCircumference}
+                    strokeDashoffset={modalStrokeDashoffset}
+                    strokeLinecap="round"
+                    fill="transparent"
+                  />
+                </svg>
+                <div className="flex flex-col items-center justify-center z-10 text-center">
+                  <span 
+                    className="font-mono font-bold text-2xl tracking-tight transition-colors"
+                    style={{ color: active ? currentColor.hex : undefined }}
+                  >
+                    {formatTime(seconds)}
+                  </span>
+                  <span 
+                    className="text-[10px] font-mono font-semibold"
+                    style={{ color: active ? currentColor.hex : undefined }}
+                  >
+                    {Math.round(progress * 100)}%
+                  </span>
+                </div>
+              </div>
+
               <div className="flex items-center gap-1.5">
                 <span 
                   className="w-2 h-2 rounded-full transition-colors" 
@@ -686,7 +731,13 @@ const GlobalTimer = () => {
                 cy="20"
                 r={radius}
                 stroke={active ? currentColor.hex : '#64748b'}
-                className="transition-all duration-500"
+                className={active ? 'progress-ring-smooth' : 'progress-ring-reset'}
+                style={{
+                  transition: active 
+                    ? 'stroke-dashoffset 1s linear, stroke 0.4s ease' 
+                    : 'stroke-dashoffset 0.35s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.4s ease',
+                  willChange: 'stroke-dashoffset'
+                }}
                 strokeWidth="3"
                 strokeDasharray={circumference}
                 strokeDashoffset={strokeDashoffset}

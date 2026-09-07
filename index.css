@@ -61,4 +61,15 @@ body {
   100% { transform: translateX(300%); }
 }
 
+/* Circular progress ring smooth transition */
+.progress-ring-smooth {
+  transition: stroke-dashoffset 1s linear, stroke 0.4s ease;
+  will-change: stroke-dashoffset;
+}
+
+.progress-ring-reset {
+  transition: stroke-dashoffset 0.35s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.4s ease;
+  will-change: stroke-dashoffset;
+}
+
 
