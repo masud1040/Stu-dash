@@ -11,6 +11,7 @@ import {
   CompletedMockInterview,
   MockQuestion,
 } from '../src/types/mockInterview';
+import { areQuestionsSemanticallyDuplicate } from '../src/lib/questionDeduplicator';
 
 
 export interface QuestionItem {
@@ -329,11 +330,11 @@ const InterviewPrep: React.FC = () => {
 
   // Add an AI-generated question to Question Bank
   const handleAddAiQuestionToBank = (qData: { question: string; answer: string; tag: string }) => {
-    const exists = questions.some(
-      (q) => q.question.toLowerCase().trim() === qData.question.toLowerCase().trim()
+    const exists = questions.some((q) =>
+      areQuestionsSemanticallyDuplicate(q.question, qData.question)
     );
     if (exists) {
-      showToast('Question already exists in Question Bank.');
+      showToast('This question (or a very similar one) is already in your Question Bank.');
       return;
     }
 

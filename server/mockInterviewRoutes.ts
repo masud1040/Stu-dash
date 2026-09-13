@@ -38,6 +38,41 @@ export interface MockQuestion {
 }
 
 // Fallback question generator when AI is offline or quota reached
+function normalizeQuestionForComparison(text: string): string {
+  if (!text) return "";
+  const prefixes = [
+    "can you explain", "could you explain", "please explain", "explain what", "explain how",
+    "explain", "what is the difference between", "what is difference between", "what is", "what are",
+    "how does", "how do you", "tell me about", "describe how", "describe", "doya kore", "apnar", "ki"
+  ];
+  let cleaned = text.toLowerCase().replace(/[?,.!"'();:\-_/[\]]/g, " ").replace(/\s+/g, " ").trim();
+  for (const p of prefixes) {
+    if (cleaned.startsWith(p + " ")) {
+      cleaned = cleaned.slice(p.length).trim();
+    }
+  }
+  return cleaned;
+}
+
+function areQuestionsDuplicate(q1: string, q2: string): boolean {
+  if (!q1 || !q2) return false;
+  if (q1.trim().toLowerCase() === q2.trim().toLowerCase()) return true;
+  const n1 = normalizeQuestionForComparison(q1);
+  const n2 = normalizeQuestionForComparison(q2);
+  if (n1 === n2) return true;
+
+  const words1 = new Set(n1.split(/\s+/).filter(w => w.length > 2));
+  const words2 = new Set(n2.split(/\s+/).filter(w => w.length > 2));
+  if (words1.size === 0 || words2.size === 0) return false;
+
+  let common = 0;
+  for (const w of words1) {
+    if (words2.has(w)) common++;
+  }
+  const union = new Set([...words1, ...words2]).size;
+  return common / union >= 0.65;
+}
+
 function generateFallbackQuestions(
   topic: string,
   totalCount: number,
@@ -184,7 +219,7 @@ export function registerMockInterviewRoutes(
       const normTopic = String(topic).trim() || "General Interview";
       const isAnything = normTopic.toLowerCase() === "anything";
 
-      // Match existing database questions
+      // Match existing database questions, filtering out internal duplicates
       let matchedDbQuestions: any[] = [];
       if (Array.isArray(existingQuestions) && existingQuestions.length > 0) {
         if (isAnything) {
@@ -199,33 +234,34 @@ export function registerMockInterviewRoutes(
         }
       }
 
-      // We can use up to 40% of targetCount from existing database questions
+      // We can use up to 50% of targetCount from existing database questions
       const maxDbCount = isAnything ? 2 : Math.min(Math.floor(targetCount * 0.5), matchedDbQuestions.length);
-      const selectedDbQuestions: MockQuestion[] = matchedDbQuestions
-        .slice(0, maxDbCount)
-        .map((q: any) => ({
-          id: q.id || `db-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          question: q.question,
-          expectedAnswer: q.answer,
-          source: "database" as const,
-          tag: q.tag || normTopic,
-        }));
+      const selectedDbQuestions: MockQuestion[] = [];
+      for (const q of matchedDbQuestions) {
+        if (selectedDbQuestions.length >= maxDbCount) break;
+        const isDup = selectedDbQuestions.some((chosen) => areQuestionsDuplicate(chosen.question, q.question));
+        if (!isDup) {
+          selectedDbQuestions.push({
+            id: q.id || `db-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            question: q.question,
+            expectedAnswer: q.answer,
+            source: "database" as const,
+            tag: q.tag || normTopic,
+          });
+        }
+      }
 
       const needAiCount = targetCount - selectedDbQuestions.length;
 
       // Check if Gemini API is configured
       if (!process.env.GEMINI_API_KEY) {
         const fallbacks = generateFallbackQuestions(normTopic, targetCount, language, difficulty);
-        // Interleave database and fallback
         const combined: MockQuestion[] = [];
-        let fIdx = 0;
-        let dIdx = 0;
-        while (combined.length < targetCount && (fIdx < fallbacks.length || dIdx < selectedDbQuestions.length)) {
-          if (dIdx < selectedDbQuestions.length && (combined.length % 2 === 1 || fIdx >= fallbacks.length)) {
-            combined.push(selectedDbQuestions[dIdx++]);
-          } else if (fIdx < fallbacks.length) {
-            combined.push(fallbacks[fIdx++]);
+        for (const item of [...selectedDbQuestions, ...fallbacks]) {
+          if (!combined.some((c) => areQuestionsDuplicate(c.question, item.question))) {
+            combined.push(item);
           }
+          if (combined.length >= targetCount) break;
         }
         return res.json({
           success: true,
@@ -236,12 +272,18 @@ export function registerMockInterviewRoutes(
 
       const ai = getGeminiClient();
 
+      // List of questions to strictly avoid repeating
+      const forbiddenQuestions = selectedDbQuestions.map((q) => q.question);
+      const forbiddenBlock = forbiddenQuestions.length > 0
+        ? `\nCRITICAL ANTI-DUPLICATION RULE:\nDo NOT generate any questions that repeat, paraphrase, or are semantically identical to these existing questions:\n${forbiddenQuestions.map((q) => `- ${q}`).join('\n')}\n`
+        : '';
+
       const prompt = `
 You are an expert technical interviewer conducting a mock interview on the topic: "${normTopic}".
 Difficulty Level: ${difficulty}
 Target Interview Spoken Language: ${language}
 Number of new questions needed: ${needAiCount}
-
+${forbiddenBlock}
 Guidelines:
 1. If this is question #1 and the total count is 3 or more, question #1 should be a friendly, professional introductory question asking the candidate to introduce themselves and discuss their background relevant to ${normTopic}.
 2. Language:
@@ -252,7 +294,8 @@ Guidelines:
    - Focus strictly on ${normTopic} (or if "Anything", cover diverse foundational software development topics like JavaScript, System Architecture, Databases, Web Security).
    - Adjust depth for "${difficulty}" difficulty.
    - For each question, provide a concise, accurate expected answer (2-4 sentences explaining the core concept).
-4. Return exactly ${needAiCount} distinct questions.
+4. Strictly avoid duplicating questions. Every question must explore a distinct concept.
+5. Return exactly ${needAiCount} distinct questions.
 
 Return JSON in this format:
 [
@@ -311,18 +354,40 @@ Return JSON in this format:
         aiQuestions = generateFallbackQuestions(normTopic, needAiCount, language, difficulty);
       }
 
+      // Deduplicate AI questions internally and against selected database questions
+      const uniqueAiList: any[] = [];
+      for (const q of aiQuestions) {
+        const isSelfDup = uniqueAiList.some((u) => areQuestionsDuplicate(u.question, q.question));
+        const isDbDup = selectedDbQuestions.some((dbQ) => areQuestionsDuplicate(dbQ.question, q.question));
+        if (!isSelfDup && !isDbDup) {
+          uniqueAiList.push(q);
+        }
+      }
+
+      // If deduplication reduced the count, replenish from fallbacks safely
+      if (uniqueAiList.length < needAiCount) {
+        const fallbacks = generateFallbackQuestions(normTopic, targetCount, language, difficulty);
+        for (const fb of fallbacks) {
+          if (uniqueAiList.length >= needAiCount) break;
+          const isDup = uniqueAiList.some((u) => areQuestionsDuplicate(u.question, fb.question)) ||
+            selectedDbQuestions.some((dbQ) => areQuestionsDuplicate(dbQ.question, fb.question));
+          if (!isDup) {
+            uniqueAiList.push(fb);
+          }
+        }
+      }
+
       // Map to MockQuestion format
-      const formattedAiQuestions: MockQuestion[] = aiQuestions.map((q: any, idx: number) => ({
+      const formattedAiQuestions: MockQuestion[] = uniqueAiList.map((q: any, idx: number) => ({
         id: `ai-q-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
         question: q.question,
         expectedAnswer: q.expectedAnswer || "Clear conceptual explanation.",
         source: "ai" as const,
         tag: q.tag || normTopic,
-        isIntroductory: Boolean(q.isIntroductory || idx === 0 && (q.question.toLowerCase().includes("introduce") || q.question.toLowerCase().includes("পরিচয়"))),
+        isIntroductory: Boolean(q.isIntroductory || (idx === 0 && (q.question.toLowerCase().includes("introduce") || q.question.toLowerCase().includes("পরিচয়")))),
       }));
 
       // Combine AI and Database questions seamlessly
-      // If there is an introductory question, place it first
       const intro = formattedAiQuestions.find((q) => q.isIntroductory);
       const remainingAi = formattedAiQuestions.filter((q) => !q.isIntroductory);
 
@@ -333,9 +398,15 @@ Return JSON in this format:
       let dbIdx = 0;
       while (assembled.length < targetCount && (aiIdx < remainingAi.length || dbIdx < selectedDbQuestions.length)) {
         if (dbIdx < selectedDbQuestions.length && (assembled.length % 2 === 1 || aiIdx >= remainingAi.length)) {
-          assembled.push(selectedDbQuestions[dbIdx++]);
+          const cand = selectedDbQuestions[dbIdx++];
+          if (!assembled.some((a) => areQuestionsDuplicate(a.question, cand.question))) {
+            assembled.push(cand);
+          }
         } else if (aiIdx < remainingAi.length) {
-          assembled.push(remainingAi[aiIdx++]);
+          const cand = remainingAi[aiIdx++];
+          if (!assembled.some((a) => areQuestionsDuplicate(a.question, cand.question))) {
+            assembled.push(cand);
+          }
         }
       }
 
@@ -362,6 +433,7 @@ Return JSON in this format:
         question,
         expectedAnswer = "",
         candidateAnswer = "",
+        rawTranscript = "",
         topic = "General",
         language = "English",
         difficulty = "Medium",
@@ -372,6 +444,14 @@ Return JSON in this format:
 
       const trimmedAnswer = (candidateAnswer || "").trim();
 
+      // Fallback model answer builder
+      const fallbackModelAnswer =
+        expectedAnswer && expectedAnswer.trim().length > 15
+          ? expectedAnswer
+          : `When working with ${topic}, the core principle involves establishing clear separation of concerns, ensuring predictable data flow, and handling errors gracefully. In production, this approach improves maintainability and system resilience.`;
+
+      const fallbackSpokenScript = `I usually explain this by first defining the core principle in one sentence, following up with a real-world example from my recent project, and mentioning one performance or testing trade-off.`;
+
       // Check if empty answer
       if (!trimmedAnswer) {
         return res.json({
@@ -380,15 +460,17 @@ Return JSON in this format:
           status: "Incorrect",
           confidence: 1.0,
           coveredPoints: [],
-          missingPoints: ["No answer provided by candidate."],
+          missingPoints: ["No answer was provided by the candidate."],
           technicalIssues: ["Candidate did not respond."],
           feedback:
-            "No answer was provided. In an interview, if you don't know the answer, it is best to be honest and explain how you would find the information.",
-          betterAnswer:
-            expectedAnswer ||
-            "A concise explanation addressing the core principles of the question.",
+            "No answer was recorded. In an actual interview, if you are unsure of an answer, it is best to be honest and explain how you would research or debug the problem.",
+          modelAnswer: fallbackModelAnswer,
+          betterAnswer: fallbackModelAnswer,
+          howToSayVerbally:
+            "If unsure: 'I haven't encountered that specific scenario yet, but my approach would be to check the documentation, review system logs, and test with an isolated minimal case.'",
           verbalHowToSay:
-            "If unsure: 'I haven't encountered that specific scenario yet, but my approach would be to check the documentation and test with a minimal example.'",
+            "If unsure: 'I haven't encountered that specific scenario yet, but my approach would be to check the documentation, review system logs, and test with an isolated minimal case.'",
+          correctedTranscript: "",
         });
       }
 
@@ -416,8 +498,11 @@ Return JSON in this format:
           missingPoints: wordCount < 15 ? ["Could add real-world application or code example"] : [],
           technicalIssues: [],
           feedback: `Good effort! Your answer demonstrates foundational understanding of ${topic}. Consider elaborating on practical use cases to make your answer stand out.`,
-          betterAnswer: expectedAnswer || "A structured answer stating the definition, benefit, and a production use case.",
-          verbalHowToSay: `Start directly with the core definition, followed by one real-world benefit you experienced in your projects.`,
+          modelAnswer: fallbackModelAnswer,
+          betterAnswer: fallbackModelAnswer,
+          howToSayVerbally: fallbackSpokenScript,
+          verbalHowToSay: fallbackSpokenScript,
+          correctedTranscript: trimmedAnswer,
         });
       }
 
@@ -432,7 +517,8 @@ Interview Context:
 - Reference Concept / Expected Answer: "${expectedAnswer || "General best practice knowledge"}"
 - Difficulty: ${difficulty}
 - Interview Language: ${language}
-- Candidate's Answer: "${trimmedAnswer}"
+- Candidate's Raw Audio Transcript: "${rawTranscript || trimmedAnswer}"
+- Candidate's Final Answer: "${trimmedAnswer}"
 
 CRITICAL EVALUATION RULES:
 1. MULTILINGUAL & MIXED-LANGUAGE TOLERANCE:
@@ -442,7 +528,7 @@ CRITICAL EVALUATION RULES:
 2. EVALUATE MEANING, NOT WORDING:
    Do NOT require exact string matching with the stored answer. A candidate does not need to mention every sentence from the reference answer. If the core concept is correct, award high credit.
 3. SCORING SCALE (0.0 to 10.0):
-   - 9.0 - 10.0: Excellent / Thorough understanding.
+   - 9.0 - 10.0: Excellent / Thorough understanding with clear technical articulation.
    - 7.0 - 8.9: Good / Correct explanation covering essential points.
    - 5.0 - 6.9: Partially Correct / Has the right direction but missing key details or contains minor inaccuracy.
    - 3.0 - 4.9: Weak / Very vague or mostly off-target.
@@ -451,12 +537,18 @@ CRITICAL EVALUATION RULES:
    - "Correct" (Score >= 7.0)
    - "Partially Correct" (Score >= 4.0 and < 7.0)
    - "Incorrect" (Score < 4.0)
-5. BETTER ANSWER:
-   Provide an interview-ready model answer (2-4 clear sentences) that a senior engineer would deliver.
-6. HOW TO SAY IT IN AN INTERVIEW:
-   Provide a natural, conversational spoken script showing the candidate exactly how to phrase it verbally with confidence and professionalism.
-7. CONSTRUCTIVE FEEDBACK:
-   Warm, polite, encouraging feedback (2-3 sentences) highlighting what was good and what could be sharpened.
+5. STRICT DISTINCTION BETWEEN FEEDBACK, MODEL ANSWER, AND HOW TO SAY IT:
+   - FEEDBACK:
+     Direct coaching evaluating what the candidate said (e.g., "You correctly identified that useState manages local component state. To improve, mention how state updates trigger re-renders.").
+   - MODEL ANSWER:
+     The actual, direct, interview-quality answer to the question that an exemplary senior engineer would give (3-5 articulate sentences).
+     DO NOT write feedback here (NEVER say "The candidate should..."). It must be the direct technical answer.
+   - HOW TO SAY IT VERBALLY:
+     A natural, conversational spoken delivery script showing the candidate how to articulate the model answer out loud in an interview without sounding robotic.
+   - TECHNICAL ISSUES:
+     An array of strings noting any technical misconceptions, false claims, or inaccuracies in the candidate's answer. If there are none, return [].
+   - CORRECTED TRANSCRIPT:
+     If the candidate's transcript contains obvious speech-to-text technical glitches (e.g. 'you state' -> 'useState'), normalize them while remaining completely faithful to the candidate's phrasing.
 `;
 
       const responseSchema = {
@@ -481,19 +573,31 @@ CRITICAL EVALUATION RULES:
           technicalIssues: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
-            description: "Any technical inaccuracies or misconceptions",
+            description: "Any technical inaccuracies or misconceptions (empty array if none)",
           },
           feedback: {
             type: Type.STRING,
-            description: "Encouraging, constructive feedback explaining the evaluation",
+            description: "Encouraging, constructive feedback evaluating the candidate's response",
+          },
+          modelAnswer: {
+            type: Type.STRING,
+            description: "Standalone, interview-quality model answer to the question (NOT feedback)",
           },
           betterAnswer: {
             type: Type.STRING,
-            description: "Interview-quality model answer",
+            description: "Same as modelAnswer for compatibility",
+          },
+          howToSayVerbally: {
+            type: Type.STRING,
+            description: "Natural conversational spoken script showing how to say it out loud",
           },
           verbalHowToSay: {
             type: Type.STRING,
-            description: "How to say it verbally in a real interview (natural conversational tone)",
+            description: "Same as howToSayVerbally for compatibility",
+          },
+          correctedTranscript: {
+            type: Type.STRING,
+            description: "Transcript with speech recognition technical terms normalized",
           },
           contextualFollowUp: {
             type: Type.STRING,
@@ -506,9 +610,10 @@ CRITICAL EVALUATION RULES:
           "status",
           "coveredPoints",
           "missingPoints",
+          "technicalIssues",
           "feedback",
-          "betterAnswer",
-          "verbalHowToSay",
+          "modelAnswer",
+          "howToSayVerbally",
         ],
       };
 
@@ -541,9 +646,18 @@ CRITICAL EVALUATION RULES:
       if (evaluationResult) {
         // Clamp score between 0 and 10
         evaluationResult.score = Math.max(0, Math.min(10, Number(evaluationResult.score) || 7));
+        const finalModelAnswer = evaluationResult.modelAnswer || evaluationResult.betterAnswer || fallbackModelAnswer;
+        const finalSpoken = evaluationResult.howToSayVerbally || evaluationResult.verbalHowToSay || fallbackSpokenScript;
+
         return res.json({
           success: true,
           ...evaluationResult,
+          modelAnswer: finalModelAnswer,
+          betterAnswer: finalModelAnswer,
+          howToSayVerbally: finalSpoken,
+          verbalHowToSay: finalSpoken,
+          rawTranscript: rawTranscript || trimmedAnswer,
+          correctedTranscript: evaluationResult.correctedTranscript || trimmedAnswer,
         });
       }
 
@@ -553,12 +667,16 @@ CRITICAL EVALUATION RULES:
         score: 7.5,
         status: "Correct",
         confidence: 0.8,
-        coveredPoints: ["Concept addressed"],
+        coveredPoints: ["Core concept addressed"],
         missingPoints: [],
         technicalIssues: [],
         feedback: "Good explanation! You demonstrated a sound working understanding of the topic.",
-        betterAnswer: expectedAnswer || "State the definition, key benefits, and a real-world use case.",
-        verbalHowToSay: "I usually approach this by first defining the core principle and applying it to clean code practices.",
+        modelAnswer: fallbackModelAnswer,
+        betterAnswer: fallbackModelAnswer,
+        howToSayVerbally: fallbackSpokenScript,
+        verbalHowToSay: fallbackSpokenScript,
+        rawTranscript: rawTranscript || trimmedAnswer,
+        correctedTranscript: trimmedAnswer,
       });
     } catch (err: any) {
       console.error("Error in /api/mock-interview/evaluate-answer:", err);

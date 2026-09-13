@@ -23,6 +23,8 @@ export interface EvaluatedQuestion {
   id: string;
   question: string;
   candidateAnswer: string;
+  rawTranscript?: string;
+  correctedTranscript?: string;
   expectedAnswer?: string;
   score: number;
   status: 'Correct' | 'Partially Correct' | 'Incorrect';
@@ -30,7 +32,9 @@ export interface EvaluatedQuestion {
   missingPoints?: string[];
   technicalIssues?: string[];
   feedback: string;
+  modelAnswer?: string;
   betterAnswer?: string;
+  howToSayVerbally?: string;
   verbalHowToSay?: string;
   source: 'database' | 'ai';
   tag: string;

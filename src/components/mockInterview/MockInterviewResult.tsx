@@ -22,7 +22,7 @@ export const MockInterviewResult: React.FC<Props> = ({
   const handleAddQuestion = (q: any) => {
     onAddQuestionToBank({
       question: q.question,
-      answer: q.betterAnswer || q.expectedAnswer || 'Technical interview answer.',
+      answer: q.modelAnswer || q.betterAnswer || q.expectedAnswer || 'Technical interview answer.',
       tag: q.tag || result.topic,
     });
     setAddedIds((prev) => ({ ...prev, [q.id]: true }));
@@ -219,7 +219,7 @@ export const MockInterviewResult: React.FC<Props> = ({
             <i className="fa-solid fa-list-check text-indigo-500"></i>
             <span>Question-by-Question Analysis ({result.questions.length})</span>
           </h3>
-          <span className="text-xs text-slate-400">Click to expand details</span>
+          <span className="text-xs text-slate-400">Click to view in-depth evaluation & model answers</span>
         </div>
 
         <div className="space-y-3">
@@ -274,7 +274,7 @@ export const MockInterviewResult: React.FC<Props> = ({
                         Your Answer:
                       </span>
                       <p className="text-slate-800 dark:text-slate-200 italic">
-                        "{q.candidateAnswer || '(No answer provided)'}"
+                        "{q.candidateAnswer || '(No answer recorded)'}"
                       </p>
                     </div>
 
@@ -286,24 +286,81 @@ export const MockInterviewResult: React.FC<Props> = ({
                       <p>{q.feedback}</p>
                     </div>
 
+                    {/* Covered & Missing Points */}
+                    {((q.coveredPoints && q.coveredPoints.length > 0) || (q.missingPoints && q.missingPoints.length > 0)) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {q.coveredPoints && q.coveredPoints.length > 0 && (
+                          <div className="bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl p-3 border border-emerald-100 dark:border-emerald-900/30">
+                            <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 block mb-1.5 flex items-center gap-1.5">
+                              <i className="fa-solid fa-circle-check"></i>
+                              <span>Key Points Covered:</span>
+                            </span>
+                            <ul className="space-y-1">
+                              {q.coveredPoints.map((pt, i) => (
+                                <li key={i} className="text-xs text-emerald-900 dark:text-emerald-200 flex items-start gap-1.5">
+                                  <span>•</span>
+                                  <span>{pt}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {q.missingPoints && q.missingPoints.length > 0 && (
+                          <div className="bg-amber-50/50 dark:bg-amber-950/20 rounded-xl p-3 border border-amber-100 dark:border-amber-900/30">
+                            <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 block mb-1.5 flex items-center gap-1.5">
+                              <i className="fa-solid fa-lightbulb"></i>
+                              <span>To Improve / Mention:</span>
+                            </span>
+                            <ul className="space-y-1">
+                              {q.missingPoints.map((pt, i) => (
+                                <li key={i} className="text-xs text-amber-900 dark:text-amber-200 flex items-start gap-1.5">
+                                  <span>•</span>
+                                  <span>{pt}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Technical Issues (if any) */}
+                    {q.technicalIssues && q.technicalIssues.length > 0 && (
+                      <div className="bg-rose-50/60 dark:bg-rose-950/30 rounded-xl p-3 border border-rose-100 dark:border-rose-900/40">
+                        <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 block mb-1.5 flex items-center gap-1.5">
+                          <i className="fa-solid fa-circle-exclamation"></i>
+                          <span>Technical Inaccuracies:</span>
+                        </span>
+                        <ul className="space-y-1">
+                          {q.technicalIssues.map((issue, i) => (
+                            <li key={i} className="text-xs text-rose-900 dark:text-rose-200 flex items-start gap-1.5">
+                              <span>•</span>
+                              <span>{issue}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     {/* Model Answer & Verbal Guidance */}
-                    {q.betterAnswer && (
+                    {(q.modelAnswer || q.betterAnswer) && (
                       <div className="bg-slate-50 dark:bg-slate-900/60 rounded-xl p-3.5 border border-slate-200/60 dark:border-slate-700/60 space-y-2">
                         <div>
                           <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 block mb-0.5">
-                            Model Answer:
+                            Ideal Model Answer:
                           </span>
                           <p className="text-slate-700 dark:text-slate-300">
-                            {q.betterAnswer}
+                            {q.modelAnswer || q.betterAnswer}
                           </p>
                         </div>
-                        {q.verbalHowToSay && (
+                        {(q.howToSayVerbally || q.verbalHowToSay) && (
                           <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
                             <span className="text-[10px] uppercase font-bold text-purple-600 dark:text-purple-400 block mb-0.5">
-                              Spoken Delivery Tip:
+                              How to Say it Verbally in an Interview:
                             </span>
                             <p className="text-slate-600 dark:text-slate-300 italic">
-                              "{q.verbalHowToSay}"
+                              "{q.howToSayVerbally || q.verbalHowToSay}"
                             </p>
                           </div>
                         )}

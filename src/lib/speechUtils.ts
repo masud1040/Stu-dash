@@ -1,7 +1,12 @@
 // Cross-browser Speech Recognition & Synthesis Helper
 
 export interface SpeechRecognitionHandlers {
-  onResult: (transcript: string, isFinal: boolean) => void;
+  onResult: (
+    currentText: string,
+    isFinal: boolean,
+    sessionFinalTranscript?: string,
+    sessionInterimTranscript?: string
+  ) => void;
   onError: (error: string) => void;
   onStart: () => void;
   onEnd: () => void;
@@ -42,20 +47,26 @@ export function createSpeechRecognizer(
   };
 
   recognizer.onresult = (event: any) => {
-    let interimTranscript = '';
-    let finalTranscript = '';
+    let sessionFinal = '';
+    let sessionInterim = '';
 
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-      const transcript = event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        finalTranscript += transcript;
+    for (let i = 0; i < event.results.length; ++i) {
+      const res = event.results[i];
+      const text = res[0]?.transcript || '';
+      if (res.isFinal) {
+        sessionFinal += (sessionFinal ? ' ' : '') + text.trim();
       } else {
-        interimTranscript += transcript;
+        sessionInterim += (sessionInterim ? ' ' : '') + text.trim();
       }
     }
 
-    const currentText = finalTranscript || interimTranscript;
-    handlers.onResult(currentText, Boolean(finalTranscript));
+    const currentText = [sessionFinal, sessionInterim].filter(Boolean).join(' ');
+    handlers.onResult(
+      currentText,
+      Boolean(sessionFinal),
+      sessionFinal,
+      sessionInterim
+    );
   };
 
   recognizer.onerror = (event: any) => {
