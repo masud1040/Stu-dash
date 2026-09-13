@@ -36,6 +36,7 @@ interface GeminiStudyReport {
   statPills: { label: string; value: string }[];
   generatedAt?: string;
   source?: string;
+  notice?: string;
 }
 
 const Analytics: React.FC = () => {
@@ -279,6 +280,17 @@ const Analytics: React.FC = () => {
         })
       });
 
+      const cleanError = (err: any): string => {
+        if (!err) return 'Failed to generate summary report with Gemini.';
+        const raw = err.message || String(err);
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed?.error?.message) return parsed.error.message;
+          if (parsed?.message) return parsed.message;
+        } catch {}
+        return raw;
+      };
+
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Server responded with status ${res.status}`);
@@ -301,7 +313,15 @@ const Analytics: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Error generating AI study summary:', err);
-      setAiError(err.message || 'Failed to generate summary report with Gemini.');
+      const cleanMsg = (() => {
+        const raw = err?.message || String(err);
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed?.error?.message) return parsed.error.message;
+        } catch {}
+        return raw;
+      })();
+      setAiError(cleanMsg || 'Failed to generate summary report with Gemini.');
     } finally {
       setIsGeneratingAi(false);
     }
@@ -624,6 +644,12 @@ const Analytics: React.FC = () => {
             <div className="space-y-5 animate-fade-in">
               {/* Executive Headline & Summary */}
               <div className="space-y-2">
+                {aiReport.notice && (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 mb-1">
+                    <i className="fa-solid fa-circle-info text-amber-500"></i>
+                    <span>{aiReport.notice}</span>
+                  </div>
+                )}
                 <h3 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white tracking-tight leading-snug">
                   {aiReport.headline}
                 </h3>

@@ -146,6 +146,15 @@ const GlobalTimer = () => {
     const saved = localStorage.getItem('global_timer_duration');
     return saved ? parseInt(saved, 10) : 25;
   });
+  const [manualMinutes, setManualMinutes] = useState<string>(() => {
+    const saved = localStorage.getItem('global_timer_duration');
+    return saved || '25';
+  });
+  const [showManualTimeInput, setShowManualTimeInput] = useState<boolean>(() => {
+    const saved = localStorage.getItem('global_timer_duration');
+    const d = saved ? parseInt(saved, 10) : 25;
+    return ![15, 25, 45, 60].includes(d);
+  });
 
   // Focus Task Tag & Progress Ring Color States
   const [focusTag, setFocusTag] = useState<string>(() => {
@@ -188,6 +197,14 @@ const GlobalTimer = () => {
     const syncFromStorage = () => {
       const savedTag = localStorage.getItem('global_timer_tag');
       if (savedTag) setFocusTag(savedTag);
+      const savedDuration = localStorage.getItem('global_timer_duration');
+      if (savedDuration) {
+        const parsed = parseInt(savedDuration, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          setDurationMinutes(parsed);
+          setManualMinutes(parsed.toString());
+        }
+      }
       try {
         const savedColors = localStorage.getItem('global_timer_tag_colors');
         if (savedColors) setTagColors({ ...DEFAULT_TAG_COLORS, ...JSON.parse(savedColors) });
@@ -396,10 +413,33 @@ const GlobalTimer = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
   };
 
+  const applyManualDuration = (val: number | string) => {
+    const parsed = typeof val === 'string' ? parseInt(val, 10) : val;
+    if (isNaN(parsed) || parsed <= 0) return;
+    const clamped = Math.max(1, Math.min(720, parsed));
+    setDurationMinutes(clamped);
+    setManualMinutes(clamped.toString());
+    localStorage.setItem('global_timer_duration', clamped.toString());
+    window.dispatchEvent(new Event('storage'));
+    if (active) {
+      startTimer(clamped);
+    }
+  };
+
+  const adjustManualMinutes = (delta: number) => {
+    const current = parseInt(manualMinutes, 10) || durationMinutes || 25;
+    const nextVal = Math.max(1, Math.min(720, current + delta));
+    applyManualDuration(nextVal);
+  };
+
   const formatTime = (totalSecs: number) => {
     const remaining = Math.max(0, totalSeconds - totalSecs);
-    const m = Math.floor(remaining / 60);
+    const h = Math.floor(remaining / 3600);
+    const m = Math.floor((remaining % 3600) / 60);
     const s = remaining % 60;
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
@@ -582,31 +622,146 @@ const GlobalTimer = () => {
               </div>
             </div>
 
-            {/* Duration Selector */}
-            <div className="mb-4">
-              <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1.5 block">
-                Duration (Minutes)
-              </label>
-              <div className="grid grid-cols-4 gap-2">
-                {[15, 25, 45, 60].map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => {
-                      setDurationMinutes(m);
-                      localStorage.setItem('global_timer_duration', m.toString());
-                      if (active) startTimer(m);
-                    }}
-                    className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      durationMinutes === m 
-                        ? 'text-white shadow-sm font-extrabold' 
-                        : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                    }`}
-                    style={durationMinutes === m ? { backgroundColor: currentColor.hex } : undefined}
+            {/* Duration Selector with Manual Time Set */}
+            <div className="mb-4 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800/80">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <i className="fa-regular fa-clock text-[10px]"></i>
+                  <span>Timer Duration</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <span 
+                    className="text-xs font-mono font-bold px-2 py-0.5 rounded-md" 
+                    style={{ color: currentColor.hex, backgroundColor: `${currentColor.hex}18` }}
                   >
-                    {m}m
+                    {durationMinutes} min{durationMinutes !== 1 ? 's' : ''}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowManualTimeInput(!showManualTimeInput)}
+                    className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <i className="fa-solid fa-pen-to-square text-[10px]"></i>
+                    <span>{showManualTimeInput ? 'Hide Manual' : 'Manual Set'}</span>
                   </button>
-                ))}
+                </div>
               </div>
+
+              {/* Presets and Custom button */}
+              <div className="grid grid-cols-5 gap-1.5 mb-2">
+                {[15, 25, 45, 60].map((m) => {
+                  const isSelected = durationMinutes === m && !showManualTimeInput;
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => {
+                        applyManualDuration(m);
+                        setShowManualTimeInput(false);
+                      }}
+                      className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'text-white shadow-xs font-extrabold scale-102' 
+                          : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                      }`}
+                      style={isSelected ? { backgroundColor: currentColor.hex, borderColor: currentColor.hex } : undefined}
+                    >
+                      {m}m
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setShowManualTimeInput(true)}
+                  className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    showManualTimeInput || ![15, 25, 45, 60].includes(durationMinutes)
+                      ? 'text-white shadow-xs font-extrabold scale-102'
+                      : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                  style={(showManualTimeInput || ![15, 25, 45, 60].includes(durationMinutes)) ? { backgroundColor: currentColor.hex, borderColor: currentColor.hex } : undefined}
+                >
+                  <i className="fa-solid fa-sliders text-[10px]"></i>
+                  <span>Custom</span>
+                </button>
+              </div>
+
+              {/* Manual Time Input Section */}
+              {showManualTimeInput && (
+                <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                      Set manual focus minutes (1 - 720 mins):
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => adjustManualMinutes(-5)}
+                        className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                        title="Decrease by 5 minutes"
+                      >
+                        -5m
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => adjustManualMinutes(5)}
+                        className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                        title="Increase by 5 minutes"
+                      >
+                        +5m
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => adjustManualMinutes(15)}
+                        className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                        title="Increase by 15 minutes"
+                      >
+                        +15m
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="720"
+                        value={manualMinutes}
+                        onChange={(e) => {
+                          setManualMinutes(e.target.value);
+                          const parsed = parseInt(e.target.value, 10);
+                          if (!isNaN(parsed) && parsed > 0 && parsed <= 720) {
+                            setDurationMinutes(parsed);
+                            localStorage.setItem('global_timer_duration', parsed.toString());
+                            if (active) startTimer(parsed);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            applyManualDuration(manualMinutes);
+                          }
+                        }}
+                        placeholder="e.g. 30"
+                        className="w-full pl-3 pr-10 py-1.5 rounded-lg text-xs font-mono font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-slate-400">
+                        min
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => applyManualDuration(manualMinutes)}
+                      className="px-3.5 py-1.5 text-white rounded-lg text-xs font-bold transition-all shadow-2xs hover:brightness-105 cursor-pointer flex items-center gap-1.5"
+                      style={{ backgroundColor: currentColor.hex }}
+                    >
+                      <i className="fa-solid fa-check text-[10px]"></i>
+                      <span>Apply</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Countdown Display with Dynamic Color Ring Tint & Circular Progress Ring */}
@@ -1083,7 +1238,7 @@ const App: React.FC = () => {
       case 'analytics': return <Analytics />;
       case 'profile': return <Profile user={activeUser} onUpdateUser={handleUpdateUser} onLogout={handleLogout} />;
       case 'others': return <Others />;
-      case 'settings': return <Settings darkMode={darkMode} toggleDarkMode={toggleDarkMode} themePreference={themePreference} setTheme={setTheme} user={activeUser} onLogout={handleLogout} />;
+      case 'settings': return <Settings darkMode={darkMode} toggleDarkMode={toggleDarkMode} themePreference={themePreference} setTheme={setTheme} user={activeUser} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />;
       case 'interview': return <InterviewPrep />;
       case 'passwords': return <PasswordManager user={activeUser} />;
       default: return <Dashboard user={activeUser} onChangePage={setCurrentPage} />;

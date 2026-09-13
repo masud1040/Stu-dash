@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, TIMER_COLORS, DEFAULT_TAG_COLORS, TimerColorKey } from '../App';
 import { deleteCurrentUserData } from '../src/lib/firebase';
+import { DataBackupSection } from '../components/DataBackupSection';
 
 interface SettingsProps {
   darkMode: boolean;
@@ -9,6 +10,7 @@ interface SettingsProps {
   setTheme: (pref: 'light' | 'dark' | 'system') => void;
   user: User;
   onLogout: () => void;
+  onUpdateUser?: (u: User) => void;
 }
 
 interface Notification {
@@ -19,8 +21,8 @@ interface Notification {
   read: boolean;
 }
 
-const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePreference, setTheme, user, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'account' | 'notifications'>('general');
+const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePreference, setTheme, user, onLogout, onUpdateUser }) => {
+  const [activeTab, setActiveTab] = useState<'general' | 'account' | 'notifications' | 'data'>('general');
   const [password, setPassword] = useState({ current: '', new: '', confirm: '' });
 
   // Notification State
@@ -36,6 +38,14 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
   const [timerTag, setTimerTag] = useState<string>(() => {
     return localStorage.getItem('global_timer_tag') || 'Study';
   });
+  const [timerDuration, setTimerDuration] = useState<number>(() => {
+    const saved = localStorage.getItem('global_timer_duration');
+    return saved ? parseInt(saved, 10) : 25;
+  });
+  const [manualDurationInput, setManualDurationInput] = useState<string>(() => {
+    const saved = localStorage.getItem('global_timer_duration');
+    return saved || '25';
+  });
   const [timerTagColors, setTimerTagColors] = useState<Record<string, TimerColorKey>>(() => {
     try {
       const saved = localStorage.getItem('global_timer_tag_colors');
@@ -44,6 +54,14 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
       return DEFAULT_TAG_COLORS;
     }
   });
+
+  const handleUpdateDuration = (mins: number) => {
+    const clamped = Math.max(1, Math.min(720, mins));
+    setTimerDuration(clamped);
+    setManualDurationInput(clamped.toString());
+    localStorage.setItem('global_timer_duration', clamped.toString());
+    window.dispatchEvent(new Event('storage'));
+  };
 
   const handleUpdateTagColor = (tag: string, color: TimerColorKey) => {
     const updated = { ...timerTagColors, [tag]: color };
@@ -182,6 +200,15 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                    {notifications.length > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">{notifications.length}</span>}
                 </div>
               </button>
+              <button 
+                onClick={() => setActiveTab('data')}
+                className={`text-left px-6 py-4 font-medium transition-colors border-l-4 ${activeTab === 'data' ? 'bg-primary/5 text-primary border-primary' : 'border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+              >
+                <div className="flex justify-between items-center w-full">
+                  <span><i className="fa-solid fa-cloud-arrow-down mr-3 w-5 text-indigo-500"></i> Backup & Restore</span>
+                  <span className="bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">JSON</span>
+                </div>
+              </button>
             </nav>
           </div>
         </div>
@@ -313,6 +340,98 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                       );
                     })}
                   </div>
+
+                  {/* Focus Timer Duration & Manual Time Setting */}
+                  <div className="mt-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/40">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                          <i className="fa-regular fa-clock text-indigo-500"></i>
+                          <span>Default Focus Duration & Manual Time</span>
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Set your default Pomodoro / focus work duration or enter custom minutes.
+                        </p>
+                      </div>
+                      <span className="self-start sm:self-auto text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
+                        Active: {timerDuration} mins
+                      </span>
+                    </div>
+
+                    {/* Presets and manual input */}
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      {[15, 25, 45, 60].map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => handleUpdateDuration(m)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            timerDuration === m
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {m} mins
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60">
+                      <div className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+                        <span>Manual Set:</span>
+                      </div>
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="relative w-32">
+                          <input
+                            type="number"
+                            min="1"
+                            max="720"
+                            value={manualDurationInput}
+                            onChange={(e) => setManualDurationInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const val = parseInt(manualDurationInput, 10);
+                                if (!isNaN(val) && val > 0) handleUpdateDuration(val);
+                              }
+                            }}
+                            placeholder="e.g. 50"
+                            className="w-full pl-3 pr-10 py-1.5 rounded-lg text-xs font-mono font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-slate-400">
+                            min
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = parseInt(manualDurationInput, 10);
+                            if (!isNaN(val) && val > 0) handleUpdateDuration(val);
+                          }}
+                          className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1"
+                        >
+                          <i className="fa-solid fa-check text-[10px]"></i>
+                          <span>Save Duration</span>
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1 mt-1 sm:mt-0">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateDuration(Math.max(1, timerDuration - 5))}
+                          className="px-2 py-1 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                        >
+                          -5m
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateDuration(Math.min(720, timerDuration + 5))}
+                          className="px-2 py-1 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                        >
+                          +5m
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="border-t border-slate-100 dark:border-slate-700 pt-6">
@@ -335,6 +454,33 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                        </select>
                      </div>
                    </div>
+                </div>
+
+                {/* Quick Data Backup Teaser in General Tab */}
+                <div className="border-t border-slate-100 dark:border-slate-700 pt-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-11 h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-lg shadow-sm flex-shrink-0">
+                        <i className="fa-solid fa-cloud-arrow-down"></i>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-white">
+                          Full Website Data Backup (JSON)
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          Download entire website data into a JSON file or upload a JSON backup to contribute section by section.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('data')}
+                      className="self-start sm:self-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer whitespace-nowrap"
+                    >
+                      <span>Open Backup & Restore</span>
+                      <i className="fa-solid fa-arrow-right text-[10px]"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -482,6 +628,11 @@ const Settings: React.FC<SettingsProps> = ({ darkMode, toggleDarkMode, themePref
                     </div>
                 </div>
               </div>
+            )}
+
+            {/* --- DATA BACKUP & RESTORE (JSON) --- */}
+            {activeTab === 'data' && (
+              <DataBackupSection user={user} onUpdateUser={onUpdateUser} />
             )}
           </div>
         </div>
