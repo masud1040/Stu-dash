@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MockInterviewConfig, EvaluatedQuestion } from '../../types/mockInterview';
-import { MockQuestion } from '../../../server/mockInterviewRoutes';
+import { MockInterviewConfig, EvaluatedQuestion, MockQuestion } from '../../types/mockInterview';
 import {
   createSpeechRecognizer,
   isSpeechRecognitionSupported,

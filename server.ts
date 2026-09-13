@@ -193,11 +193,10 @@ Include:
         required: ["headline", "moodBadge", "summary", "highlights", "tomorrowTip", "statPills"]
       };
 
-      // Candidate models: prioritize gemini-flash-latest, fallback to gemini-3.1-flash-lite and gemini-3.8-flash
+      // Candidate models: prioritize high-availability fast model
       const CANDIDATE_MODELS = [
-        "gemini-flash-latest",
         "gemini-3.1-flash-lite",
-        "gemini-3.8-flash"
+        "gemini-flash-latest"
       ];
 
       let parsedReport: any = null;

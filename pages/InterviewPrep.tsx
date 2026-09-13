@@ -9,8 +9,8 @@ import {
   MockInterviewConfig,
   EvaluatedQuestion,
   CompletedMockInterview,
+  MockQuestion,
 } from '../src/types/mockInterview';
-import { MockQuestion } from '../server/mockInterviewRoutes';
 
 
 export interface QuestionItem {
@@ -139,6 +139,76 @@ const InterviewPrep: React.FC = () => {
     saveCloudData('', 'mock_interview_history', updatedHistory);
   };
 
+  // Generate reliable fallback questions if backend call is interrupted or offline
+  const generateClientFallbackQuestions = (cfg: MockInterviewConfig): MockQuestion[] => {
+    const topic = cfg.topic || 'General';
+    const count = cfg.totalQuestions || 5;
+    const isBn = cfg.language === 'বাংলা';
+    const isBng = cfg.language === 'Banglish';
+
+    const introQ: MockQuestion = {
+      id: `local-q-intro-${Date.now()}`,
+      question: isBn
+        ? `স্বাগতম! আপনার মক ইন্টারভিউতে স্বাগতম। দয়া করে আপনার পরিচয় দিন এবং ${topic} সম্পর্কিত আপনার পূর্ববর্তী কাজের অভিজ্ঞতা জানান?`
+        : isBng
+        ? `Hi, welcome to your mock interview session! Apnar brief introduction din ebong ${topic} niye apnar experience share korun?`
+        : `Hi! Welcome to your mock interview. Could you please introduce yourself and share your experience with ${topic}?`,
+      expectedAnswer: 'Clear, structured self-introduction highlighting relevant technical background, projects, and strengths.',
+      source: 'ai',
+      tag: topic,
+      isIntroductory: true,
+    };
+
+    // Pull matching questions from stored bank if available
+    const matched = questions
+      .filter((q) => q.tag.toLowerCase().includes(topic.toLowerCase()) || topic.toLowerCase().includes(q.tag.toLowerCase()))
+      .map((q) => ({
+        id: q.id,
+        question: q.question,
+        expectedAnswer: q.answer,
+        source: 'database' as const,
+        tag: q.tag,
+      }));
+
+    const pool: MockQuestion[] = [introQ];
+    matched.forEach((m) => {
+      if (pool.length < count) pool.push(m);
+    });
+
+    const standardQuestions: { q: string; a: string }[] = [
+      {
+        q: `What are the core fundamentals and primary advantages of using ${topic} in modern production applications?`,
+        a: `${topic} provides high maintainability, structured design, developer productivity, and scalability.`,
+      },
+      {
+        q: `How do you handle state management, lifecycle flow, or error boundaries when developing with ${topic}?`,
+        a: `By following modular separation of concerns, centralized error handling, and robust lifecycle hooks.`,
+      },
+      {
+        q: `Can you explain a challenging performance bottleneck you faced with ${topic} and how you solved it?`,
+        a: `Profiling execution time, reducing redundant re-renders or queries, and applying caching strategies.`,
+      },
+      {
+        q: `What are the key security and testing practices you follow when shipping features with ${topic}?`,
+        a: `Input sanitization, automated unit and integration tests, environment secret isolation, and linting standards.`,
+      },
+    ];
+
+    let stdIdx = 0;
+    while (pool.length < count && stdIdx < standardQuestions.length) {
+      pool.push({
+        id: `local-q-${Date.now()}-${stdIdx}`,
+        question: standardQuestions[stdIdx].q,
+        expectedAnswer: standardQuestions[stdIdx].a,
+        source: 'ai',
+        tag: topic,
+      });
+      stdIdx++;
+    }
+
+    return pool;
+  };
+
   // Start Mock Interview flow
   const handleStartMockInterview = async (config: MockInterviewConfig) => {
     setIsPreparingQuestions(true);
@@ -160,17 +230,22 @@ const InterviewPrep: React.FC = () => {
         }),
       });
 
-      const data = await res.json();
-      if (data.success && Array.isArray(data.questions) && data.questions.length > 0) {
-        setActiveMockConfig(config);
-        setActiveMockQuestions(data.questions);
-        setViewMode('mock-session');
-      } else {
-        throw new Error('Failed to generate interview questions');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.questions) && data.questions.length > 0) {
+          setActiveMockConfig(config);
+          setActiveMockQuestions(data.questions);
+          setViewMode('mock-session');
+          return;
+        }
       }
+      throw new Error('Server returned invalid questions format');
     } catch (err) {
-      console.error('Failed to prepare mock interview questions:', err);
-      showToast('Error preparing interview questions. Please try again.');
+      console.warn('Backend question generation warning, initializing resilient fallback questions:', err);
+      const fallbackQuestions = generateClientFallbackQuestions(config);
+      setActiveMockConfig(config);
+      setActiveMockQuestions(fallbackQuestions);
+      setViewMode('mock-session');
     } finally {
       setIsPreparingQuestions(false);
     }

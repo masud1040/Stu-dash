@@ -13,13 +13,13 @@ function extractCleanErrorMessage(err: any): string {
   return msg;
 }
 
+// Prioritize fast, high-availability models with instant latency
 const CANDIDATE_MODELS = [
-  "gemini-flash-latest",
   "gemini-3.1-flash-lite",
-  "gemini-3.8-flash",
+  "gemini-flash-latest",
 ];
 
-async function withTimeout<T>(promise: Promise<T>, ms: number = 8000): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, ms: number = 5000): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) =>

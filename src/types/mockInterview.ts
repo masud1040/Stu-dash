@@ -10,6 +10,15 @@ export interface MockInterviewConfig {
   difficulty: InterviewDifficulty;
 }
 
+export interface MockQuestion {
+  id: string;
+  question: string;
+  expectedAnswer?: string;
+  source: 'database' | 'ai';
+  tag: string;
+  isIntroductory?: boolean;
+}
+
 export interface EvaluatedQuestion {
   id: string;
   question: string;
