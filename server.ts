@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { registerMockInterviewRoutes } from "./server/mockInterviewRoutes";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,6 +82,9 @@ async function startServer() {
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
+
+  // Mock Interview AI Routes
+  registerMockInterviewRoutes(app, getGeminiClient);
 
   app.post("/api/analytics/study-summary", async (req, res) => {
     try {

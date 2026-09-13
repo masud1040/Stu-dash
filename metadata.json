@@ -1,6 +1,6 @@
 {
   "name": "StudyDash",
-  "description": "A comprehensive, fully responsive React dashboard for students to manage studies, habits, resources, todos, and analytics. Features persistent local storage, data visualization, and PDF exports.",
-  "requestFramePermissions": [],
+  "description": "A comprehensive, fully responsive React dashboard for students to manage studies, habits, resources, todos, analytics, and interactive AI mock interviews. Features persistent local storage, data visualization, and PDF exports.",
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

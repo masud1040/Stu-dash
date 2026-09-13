@@ -13,6 +13,7 @@ export const USER_DATA_MODULE_KEYS = [
   'study_roadmap_milestones',
   'interview_questions',
   'interview_tags',
+  'mock_interview_history',
   'class_routine',
   'student_cv',
   'passwords_list',
@@ -31,6 +32,7 @@ export function getDefaultDataForKey(key: string): any {
     case 'meetings':
     case 'resources':
     case 'passwords_list':
+    case 'mock_interview_history':
       return [];
     case 'interview_tags':
       return ['General', 'Technical', 'Behavioral', 'HR'];

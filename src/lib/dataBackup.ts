@@ -122,6 +122,17 @@ export const WEBSITE_SECTIONS: SectionMeta[] = [
     isArray: true
   },
   {
+    key: 'mock_interview_history',
+    name: 'Mock Interview History',
+    category: 'Career & Documents',
+    description: 'Saved mock interview sessions, transcripts, AI scores, and feedback reports',
+    icon: 'fa-user-tie',
+    badgeColor: 'bg-violet-600',
+    isArray: true,
+    idField: 'id',
+    textField: 'topic'
+  },
+  {
     key: 'class_routine',
     name: 'Class Routine',
     category: 'Study & Tasks',

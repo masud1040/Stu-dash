@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchCloudData, saveCloudData } from '../src/lib/dbSync';
+import { MockInterviewSetup } from '../src/components/mockInterview/MockInterviewSetup';
+import { InterviewSession } from '../src/components/mockInterview/InterviewSession';
+import { MockInterviewResult } from '../src/components/mockInterview/MockInterviewResult';
+import { MockInterviewHistory } from '../src/components/mockInterview/MockInterviewHistory';
+import {
+  MockInterviewConfig,
+  EvaluatedQuestion,
+  CompletedMockInterview,
+} from '../src/types/mockInterview';
+import { MockQuestion } from '../server/mockInterviewRoutes';
 
 
 export interface QuestionItem {
@@ -75,6 +85,16 @@ const InterviewPrep: React.FC = () => {
   // File input ref for JSON import
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // Mock Interview State
+  const [viewMode, setViewMode] = useState<
+    'questions' | 'mock-setup' | 'mock-session' | 'mock-result' | 'mock-history'
+  >('questions');
+  const [mockHistory, setMockHistory] = useState<CompletedMockInterview[]>([]);
+  const [activeMockConfig, setActiveMockConfig] = useState<MockInterviewConfig | null>(null);
+  const [activeMockQuestions, setActiveMockQuestions] = useState<MockQuestion[]>([]);
+  const [activeMockResult, setActiveMockResult] = useState<CompletedMockInterview | null>(null);
+  const [isPreparingQuestions, setIsPreparingQuestions] = useState(false);
+
   // Load from cloud / local storage
   useEffect(() => {
     fetchCloudData('', 'interview_questions', INITIAL_QUESTIONS).then((loadedQ) => {
@@ -92,6 +112,12 @@ const InterviewPrep: React.FC = () => {
         setTags(DEFAULT_TAGS);
       }
     });
+
+    fetchCloudData('', 'mock_interview_history', []).then((loadedHistory) => {
+      if (loadedHistory && Array.isArray(loadedHistory) && loadedHistory.length > 0) {
+        setMockHistory(loadedHistory);
+      }
+    });
   }, []);
 
   // Sync questions to Firestore & LocalStorage
@@ -105,6 +131,165 @@ const InterviewPrep: React.FC = () => {
     const unique = Array.from(new Set(updatedTags)).filter(Boolean);
     setTags(unique);
     saveCloudData('', 'interview_tags', unique);
+  };
+
+  // Sync mock interview history to Firestore & LocalStorage
+  const saveMockHistoryToStorage = (updatedHistory: CompletedMockInterview[]) => {
+    setMockHistory(updatedHistory);
+    saveCloudData('', 'mock_interview_history', updatedHistory);
+  };
+
+  // Start Mock Interview flow
+  const handleStartMockInterview = async (config: MockInterviewConfig) => {
+    setIsPreparingQuestions(true);
+    try {
+      const res = await fetch('/api/mock-interview/generate-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: config.topic,
+          totalCount: config.totalQuestions,
+          language: config.language,
+          difficulty: config.difficulty,
+          existingQuestions: questions.map((q) => ({
+            id: q.id,
+            question: q.question,
+            answer: q.answer,
+            tag: q.tag,
+          })),
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && Array.isArray(data.questions) && data.questions.length > 0) {
+        setActiveMockConfig(config);
+        setActiveMockQuestions(data.questions);
+        setViewMode('mock-session');
+      } else {
+        throw new Error('Failed to generate interview questions');
+      }
+    } catch (err) {
+      console.error('Failed to prepare mock interview questions:', err);
+      showToast('Error preparing interview questions. Please try again.');
+    } finally {
+      setIsPreparingQuestions(false);
+    }
+  };
+
+  // Finish Mock Interview flow
+  const handleFinishInterview = async (
+    evaluatedQuestions: EvaluatedQuestion[],
+    durationStr: string
+  ) => {
+    if (!activeMockConfig) return;
+
+    let summaryData: any = null;
+    try {
+      const res = await fetch('/api/mock-interview/generate-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: activeMockConfig.topic,
+          language: activeMockConfig.language,
+          difficulty: activeMockConfig.difficulty,
+          duration: durationStr,
+          questions: evaluatedQuestions.map((q) => ({
+            question: q.question,
+            candidateAnswer: q.candidateAnswer,
+            score: q.score,
+            status: q.status,
+            feedback: q.feedback,
+          })),
+        }),
+      });
+      summaryData = await res.json();
+    } catch (e) {
+      console.warn('Summary generation warning:', e);
+    }
+
+    const totalScoreSum = evaluatedQuestions.reduce((acc, q) => acc + (Number(q.score) || 0), 0);
+    const avg = evaluatedQuestions.length > 0 ? totalScoreSum / evaluatedQuestions.length : 0;
+    const overallScore = Math.round((avg / 10) * 100);
+
+    const completedSession: CompletedMockInterview = {
+      id: `mock-${Date.now()}`,
+      date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+      topic: activeMockConfig.topic,
+      language: activeMockConfig.language,
+      difficulty: activeMockConfig.difficulty,
+      totalQuestions: evaluatedQuestions.length,
+      score: summaryData?.overallScore ?? overallScore,
+      duration: durationStr,
+      correctCount: summaryData?.correctCount ?? evaluatedQuestions.filter((q) => q.status === 'Correct').length,
+      partialCount: summaryData?.partialCount ?? evaluatedQuestions.filter((q) => q.status === 'Partially Correct').length,
+      incorrectCount: summaryData?.incorrectCount ?? evaluatedQuestions.filter((q) => q.status === 'Incorrect').length,
+      strengths: summaryData?.strengths || [
+        `Solid understanding of ${activeMockConfig.topic} fundamentals`,
+        'Articulate responses with good conceptual clarity',
+      ],
+      weaknesses: summaryData?.weaknesses || [
+        'Edge case handling and deep production trade-offs',
+      ],
+      recommendedTopics: summaryData?.recommendedTopics || [
+        activeMockConfig.topic,
+        'Design Patterns & Architecture',
+        'Performance Optimization',
+      ],
+      interviewTips: summaryData?.interviewTips || [
+        'Define the core concept upfront before expanding into implementation details.',
+        'Use real-world examples from past projects to reinforce your answer.',
+      ],
+      suggestedQuestions: summaryData?.suggestedQuestions || [
+        `How would you architect a production module in ${activeMockConfig.topic}?`,
+      ],
+      questions: evaluatedQuestions,
+    };
+
+    const updatedHistory = [completedSession, ...mockHistory];
+    saveMockHistoryToStorage(updatedHistory);
+    setActiveMockResult(completedSession);
+    setViewMode('mock-result');
+    showToast('Interview completed! Performance report generated.');
+  };
+
+  // Add an AI-generated question to Question Bank
+  const handleAddAiQuestionToBank = (qData: { question: string; answer: string; tag: string }) => {
+    const exists = questions.some(
+      (q) => q.question.toLowerCase().trim() === qData.question.toLowerCase().trim()
+    );
+    if (exists) {
+      showToast('Question already exists in Question Bank.');
+      return;
+    }
+
+    const nowFormatted = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+
+    const newQuestion: QuestionItem = {
+      id: 'q-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+      question: qData.question,
+      answer: qData.answer,
+      tag: qData.tag || 'General',
+      favorite: false,
+      createdAt: nowFormatted,
+      updatedAt: nowFormatted,
+    };
+
+    saveQuestionsToStorage([newQuestion, ...questions]);
+    if (qData.tag && !tags.includes(qData.tag)) {
+      saveTagsToStorage([...tags, qData.tag]);
+    }
+    showToast('Question added to your Question Bank.');
+  };
+
+  // Delete interview history session
+  const handleDeleteSession = (sessionId: string) => {
+    const updated = mockHistory.filter((s) => s.id !== sessionId);
+    saveMockHistoryToStorage(updated);
+    showToast('Interview session deleted.');
   };
 
 
@@ -543,6 +728,94 @@ const InterviewPrep: React.FC = () => {
     return matchesSearch && matchesTag && matchesFav;
   });
 
+  // Render dedicated Mock Interview screens when active
+  if (viewMode === 'mock-setup') {
+    return (
+      <div className="space-y-6 pb-12">
+        {toastMessage && typeof document !== 'undefined' && createPortal(
+          <div className="fixed top-6 right-6 z-[250] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-bounce">
+            <i className="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>,
+          document.body
+        )}
+        <MockInterviewSetup
+          onStart={handleStartMockInterview}
+          onOpenHistory={() => setViewMode('mock-history')}
+          onBackToQuestions={() => setViewMode('questions')}
+          isLoading={isPreparingQuestions}
+          historyCount={mockHistory.length}
+        />
+      </div>
+    );
+  }
+
+  if (viewMode === 'mock-session' && activeMockConfig) {
+    return (
+      <div className="space-y-6 pb-12">
+        {toastMessage && typeof document !== 'undefined' && createPortal(
+          <div className="fixed top-6 right-6 z-[250] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-bounce">
+            <i className="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>,
+          document.body
+        )}
+        <InterviewSession
+          config={activeMockConfig}
+          questions={activeMockQuestions}
+          onFinishInterview={handleFinishInterview}
+          onExit={() => setViewMode('mock-setup')}
+          onAddQuestionToBank={handleAddAiQuestionToBank}
+        />
+      </div>
+    );
+  }
+
+  if (viewMode === 'mock-result' && activeMockResult) {
+    return (
+      <div className="space-y-6 pb-12">
+        {toastMessage && typeof document !== 'undefined' && createPortal(
+          <div className="fixed top-6 right-6 z-[250] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-bounce">
+            <i className="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>,
+          document.body
+        )}
+        <MockInterviewResult
+          result={activeMockResult}
+          onPracticeAgain={() => setViewMode('mock-setup')}
+          onBackToQuestions={() => setViewMode('questions')}
+          onOpenHistory={() => setViewMode('mock-history')}
+          onAddQuestionToBank={handleAddAiQuestionToBank}
+        />
+      </div>
+    );
+  }
+
+  if (viewMode === 'mock-history') {
+    return (
+      <div className="space-y-6 pb-12">
+        {toastMessage && typeof document !== 'undefined' && createPortal(
+          <div className="fixed top-6 right-6 z-[250] bg-slate-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-bounce">
+            <i className="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>,
+          document.body
+        )}
+        <MockInterviewHistory
+          history={mockHistory}
+          onSelectSession={(session) => {
+            setActiveMockResult(session);
+            setViewMode('mock-result');
+          }}
+          onDeleteSession={handleDeleteSession}
+          onStartNew={() => setViewMode('mock-setup')}
+          onBackToQuestions={() => setViewMode('questions')}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 pb-12">
       {/* Toast Notification */}
@@ -554,21 +827,46 @@ const InterviewPrep: React.FC = () => {
         document.body
       )}
 
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 text-xs font-semibold uppercase tracking-wider mb-3">
-              <i className="fa-solid fa-graduation-cap"></i> Career & Tech Mastery
+      {/* Header Banner - Compact & Clean */}
+      <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl px-5 py-3.5 md:py-4 text-white shadow-md relative overflow-hidden">
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs text-white flex items-center justify-center text-base shrink-0">
+              <i className="fa-solid fa-graduation-cap"></i>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold">Interview Preparation</h1>
-            <p className="text-indigo-100 mt-1 max-w-xl text-sm md:text-base">
-              Master technical & behavioral interview questions, organize with custom tags, and export professionally styled A4 PDFs or JSON backups.
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base md:text-lg font-bold leading-tight">Interview Preparation</h1>
+                <span className="hidden md:inline-block text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-white/20">
+                  Tech & Behavioral
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-indigo-200 mt-0.5 font-medium">
+                <span>{questions.length} Questions</span>
+                <span>•</span>
+                <span>{questions.filter(q => q.favorite).length} Saved</span>
+                <span>•</span>
+                <span>{tags.length} Tags</span>
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Launch Mock Interview Button */}
+            <button
+              onClick={() => setViewMode('mock-setup')}
+              className="px-3 py-1.5 rounded-lg bg-white text-indigo-700 hover:bg-indigo-50 font-bold text-xs transition-all shadow-xs flex items-center gap-1.5 transform active:scale-95 cursor-pointer"
+              title="Practice real-time technical & behavioral mock interview with AI"
+            >
+              <i className="fa-solid fa-headset text-indigo-600 text-xs"></i>
+              <span>Mock Interview</span>
+              {mockHistory.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-extrabold ml-0.5">
+                  {mockHistory.length}
+                </span>
+              )}
+            </button>
+
             {/* Hidden JSON file input */}
             <input
               type="file"
@@ -581,88 +879,109 @@ const InterviewPrep: React.FC = () => {
             {/* Export PDF (A4) */}
             <button
               onClick={exportPDF}
-              className="px-4 py-2.5 rounded-xl bg-white text-indigo-700 hover:bg-indigo-50 font-semibold text-xs transition-all shadow-lg flex items-center gap-2 transform active:scale-95"
+              className="px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-semibold text-xs transition-all border border-white/20 flex items-center gap-1.5 transform active:scale-95 cursor-pointer"
               title="Export formatted questions as A4 printable PDF report"
             >
-              <i className="fa-solid fa-file-pdf text-rose-500 text-sm"></i>
-              <span>Export A4 PDF</span>
+              <i className="fa-solid fa-file-pdf text-rose-300 text-xs"></i>
+              <span>Export PDF</span>
             </button>
 
             {/* Export JSON */}
             <button
               onClick={exportJSON}
-              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-all border border-white/20 backdrop-blur-md flex items-center gap-2 transform active:scale-95"
-              title="Export all interview questions as JSON file"
+              className="px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-semibold text-xs transition-all border border-white/20 flex items-center gap-1.5 transform active:scale-95 cursor-pointer"
+              title="Export interview questions as JSON file"
             >
-              <i className="fa-solid fa-code text-amber-300 text-sm"></i>
+              <i className="fa-solid fa-code text-amber-300 text-xs"></i>
               <span>Export JSON</span>
             </button>
 
             {/* Import JSON */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-all border border-white/20 backdrop-blur-md flex items-center gap-2 transform active:scale-95"
+              className="px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-semibold text-xs transition-all border border-white/20 flex items-center gap-1.5 transform active:scale-95 cursor-pointer"
               title="Import interview questions from JSON file"
             >
-              <i className="fa-solid fa-file-arrow-up text-emerald-300 text-sm"></i>
-              <span>Import JSON</span>
+              <i className="fa-solid fa-file-arrow-up text-emerald-300 text-xs"></i>
+              <span>Import</span>
             </button>
 
             {/* Paste JSON */}
             <button
               onClick={() => setIsJsonModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-all border border-white/20 backdrop-blur-md flex items-center gap-2 transform active:scale-95"
+              className="px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white font-semibold text-xs transition-all border border-white/20 flex items-center gap-1.5 transform active:scale-95 cursor-pointer"
               title="Paste JSON questions directly"
             >
-              <i className="fa-solid fa-code text-cyan-300 text-sm"></i>
-              <span>Paste JSON</span>
+              <i className="fa-solid fa-paste text-cyan-300 text-xs"></i>
+              <span>Paste</span>
             </button>
-          </div>
-        </div>
-
-        {/* Quick Stats bar inside banner */}
-        <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-white/15">
-          <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10">
-            <div className="text-2xl font-extrabold">{questions.length}</div>
-            <div className="text-xs text-indigo-200">Total Questions</div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10">
-            <div className="text-2xl font-extrabold">{questions.filter(q => q.favorite).length}</div>
-            <div className="text-xs text-indigo-200">Favorited Items</div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10">
-            <div className="text-2xl font-extrabold">{tags.length}</div>
-            <div className="text-xs text-indigo-200">Categories / Tags</div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-xl border border-white/10">
-            <div className="text-2xl font-extrabold">
-              {questions.length > 0 ? `${Math.round((questions.filter(q => q.favorite).length / questions.length) * 100)}%` : '0%'}
-            </div>
-            <div className="text-xs text-indigo-200">Mastery Ratio</div>
           </div>
         </div>
       </div>
 
-      {/* 1. Add Interview Question Form */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 md:p-8 shadow-sm border border-slate-200 dark:border-slate-700 transition-colors">
+      {/* Mock Interview Launch Card */}
+      <div className="bg-gradient-to-br from-indigo-50/70 via-purple-50/40 to-slate-50 dark:from-slate-800 dark:via-indigo-950/20 dark:to-slate-800/80 rounded-2xl p-4 sm:p-5 border border-indigo-100 dark:border-indigo-900/40 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-lg shadow-md shadow-indigo-500/20 shrink-0">
+            <i className="fa-solid fa-headset"></i>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                Interactive AI Mock Interview
+              </h2>
+              <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
+                Voice & Text
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Practice answering technical questions with voice synthesis, live speech recognition, and semantic AI feedback.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          {mockHistory.length > 0 && (
+            <button
+              onClick={() => setViewMode('mock-history')}
+              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 text-xs font-semibold shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <i className="fa-solid fa-clock-rotate-left text-indigo-500 text-xs"></i>
+              <span>History ({mockHistory.length})</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setViewMode('mock-setup')}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition-all transform active:scale-95 flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            <i className="fa-solid fa-play text-[10px]"></i>
+            <span>Start Mock Interview</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 1. Add Interview Question Form - Minimal & Compact */}
+      <div className="bg-white dark:bg-slate-800 rounded-xl p-3.5 sm:p-4 shadow-2xs border border-slate-200 dark:border-slate-700/80 transition-all">
         <div 
           onClick={() => setIsFormOpen(!isFormOpen)}
-          className={`flex items-center justify-between cursor-pointer select-none ${isFormOpen ? 'mb-6 pb-4 border-b border-slate-100 dark:border-slate-700' : ''}`}
+          className={`flex items-center justify-between cursor-pointer select-none ${isFormOpen ? 'mb-3 pb-2.5 border-b border-slate-100 dark:border-slate-700/60' : ''}`}
         >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold transition-transform duration-200 hover:scale-105">
-              <i className={`fa-solid ${isFormOpen ? 'fa-minus' : 'fa-plus'} text-lg`}></i>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xs font-bold shrink-0">
+              <i className={`fa-solid ${isFormOpen ? 'fa-minus' : 'fa-plus'}`}></i>
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                <span>Add New Interview Question</span>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  Add New Interview Question
+                </h2>
                 {!isFormOpen && (
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-semibold border border-indigo-100 dark:border-indigo-900/50">
-                    Click + to expand
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 hidden sm:inline">
+                    • Click to open form
                   </span>
                 )}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Save a technical or behavioral question with detailed answers.</p>
+              </div>
             </div>
           </div>
           <button 
@@ -671,133 +990,141 @@ const InterviewPrep: React.FC = () => {
               e.stopPropagation();
               setIsFormOpen(!isFormOpen);
             }}
-            className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 flex items-center justify-center transition-all shadow-2xs"
-            title={isFormOpen ? "Hide Form" : "Show Form"}
+            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1.5 transition-colors text-xs font-medium cursor-pointer"
+            title={isFormOpen ? "Hide Form" : "Expand Form"}
           >
-            <i className={`fa-solid ${isFormOpen ? 'fa-xmark' : 'fa-plus'} text-sm`}></i>
+            <i className={`fa-solid ${isFormOpen ? 'fa-xmark' : 'fa-plus'} text-[11px]`}></i>
+            <span>{isFormOpen ? 'Close' : 'New Question'}</span>
           </button>
         </div>
 
         {isFormOpen && (
-          <form onSubmit={handleAddQuestion} className="space-y-5 animate-fade-in">
-          {/* Question Textarea */}
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Question <span className="text-rose-500">*</span>
-            </label>
-            <textarea
-              rows={2}
-              value={questionInput}
-              onChange={(e) => {
-                setQuestionInput(e.target.value);
-                if (formErrors.question) setFormErrors(prev => ({ ...prev, question: undefined }));
-              }}
-              placeholder="e.g. What is the difference between process and thread in Operating Systems?"
-              className={`w-full px-4 py-3 rounded-xl border ${
-                formErrors.question ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 dark:border-slate-700 focus:ring-primary'
-              } bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:border-transparent transition-all`}
-            ></textarea>
-            {formErrors.question && <p className="text-xs text-rose-500 mt-1">{formErrors.question}</p>}
-          </div>
-
-          {/* Answer Large Textarea */}
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Answer <span className="text-rose-500">*</span>
-            </label>
-            <textarea
-              rows={4}
-              value={answerInput}
-              onChange={(e) => {
-                setAnswerInput(e.target.value);
-                if (formErrors.answer) setFormErrors(prev => ({ ...prev, answer: undefined }));
-              }}
-              placeholder="Write a clear, structured answer with key points or code examples..."
-              className={`w-full px-4 py-3 rounded-xl border ${
-                formErrors.answer ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 dark:border-slate-700 focus:ring-primary'
-              } bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:border-transparent transition-all`}
-            ></textarea>
-            {formErrors.answer && <p className="text-xs text-rose-500 mt-1">{formErrors.answer}</p>}
-          </div>
-
-          {/* Tag / Subject Selection */}
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Tag / Subject <span className="text-rose-500">*</span>
-            </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {!isCustomTag ? (
-                <div className="relative">
-                  <select
-                    value={selectedTag}
-                    onChange={(e) => {
-                      if (e.target.value === 'CREATE_NEW') {
-                        setIsCustomTag(true);
-                        setSelectedTag('');
-                      } else {
-                        setSelectedTag(e.target.value);
-                        if (formErrors.tag) setFormErrors(prev => ({ ...prev, tag: undefined }));
-                      }
-                    }}
-                    className={`w-full px-4 py-3 rounded-xl border ${
-                      formErrors.tag ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
-                    } bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary transition-all appearance-none cursor-pointer`}
-                  >
-                    <option value="">-- Select Existing Tag --</option>
-                    {tags.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                    <option value="CREATE_NEW" className="font-semibold text-primary">+ Create New Tag...</option>
-                  </select>
-                  <i className="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={customTagInput}
-                    onChange={(e) => {
-                      setCustomTagInput(e.target.value);
-                      if (formErrors.tag) setFormErrors(prev => ({ ...prev, tag: undefined }));
-                    }}
-                    placeholder="Type new tag name..."
-                    className={`flex-1 px-4 py-3 rounded-xl border ${
-                      formErrors.tag ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
-                    } bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary transition-all`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomTag(false);
-                      setCustomTagInput('');
-                    }}
-                    className="px-3 py-3 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-xs font-semibold"
-                    title="Select existing tag"
-                  >
-                    Select List
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-center text-xs text-slate-500 dark:text-slate-400 px-2">
-                <i className="fa-solid fa-circle-info mr-1.5 text-primary"></i>
-                Selecting or typing a new tag saves it automatically for future reuse.
-              </div>
+          <form onSubmit={handleAddQuestion} className="space-y-3 animate-fade-in pt-1">
+            {/* Question Textarea */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                Question <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={2}
+                value={questionInput}
+                onChange={(e) => {
+                  setQuestionInput(e.target.value);
+                  if (formErrors.question) setFormErrors(prev => ({ ...prev, question: undefined }));
+                }}
+                placeholder="e.g. What is the difference between process and thread in Operating Systems?"
+                className={`w-full px-3 py-2 text-xs sm:text-sm rounded-lg border ${
+                  formErrors.question ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 dark:border-slate-700 focus:ring-indigo-500'
+                } bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1.5 focus:border-transparent transition-all`}
+              ></textarea>
+              {formErrors.question && <p className="text-[11px] text-rose-500 mt-0.5">{formErrors.question}</p>}
             </div>
-            {formErrors.tag && <p className="text-xs text-rose-500 mt-1">{formErrors.tag}</p>}
-          </div>
 
-          {/* Save Button */}
-          <div className="flex justify-end pt-2">
-            <button
-              type="submit"
-              className="px-6 py-3 rounded-xl bg-primary text-white font-medium shadow-lg shadow-primary/30 hover:bg-indigo-600 transition-all flex items-center gap-2 transform active:scale-95 cursor-pointer"
-            >
-              <i className="fa-solid fa-floppy-disk"></i>
-              <span>Save Question</span>
-            </button>
-          </div>
-        </form>
+            {/* Answer Textarea */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                Answer <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={answerInput}
+                onChange={(e) => {
+                  setAnswerInput(e.target.value);
+                  if (formErrors.answer) setFormErrors(prev => ({ ...prev, answer: undefined }));
+                }}
+                placeholder="Write a clear, structured answer with key points or code examples..."
+                className={`w-full px-3 py-2 text-xs sm:text-sm rounded-lg border ${
+                  formErrors.answer ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 dark:border-slate-700 focus:ring-indigo-500'
+                } bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1.5 focus:border-transparent transition-all`}
+              ></textarea>
+              {formErrors.answer && <p className="text-[11px] text-rose-500 mt-0.5">{formErrors.answer}</p>}
+            </div>
+
+            {/* Tag / Subject Selection */}
+            <div>
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">
+                Tag / Subject <span className="text-rose-500">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {!isCustomTag ? (
+                  <div className="relative">
+                    <select
+                      value={selectedTag}
+                      onChange={(e) => {
+                        if (e.target.value === 'CREATE_NEW') {
+                          setIsCustomTag(true);
+                          setSelectedTag('');
+                        } else {
+                          setSelectedTag(e.target.value);
+                          if (formErrors.tag) setFormErrors(prev => ({ ...prev, tag: undefined }));
+                        }
+                      }}
+                      className={`w-full px-3 py-1.5 text-xs sm:text-sm rounded-lg border ${
+                        formErrors.tag ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
+                      } bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1.5 focus:ring-indigo-500 transition-all appearance-none cursor-pointer pr-8`}
+                    >
+                      <option value="">-- Select Existing Tag --</option>
+                      {tags.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                      <option value="CREATE_NEW" className="font-semibold text-indigo-600 dark:text-indigo-400">+ Create New Tag...</option>
+                    </select>
+                    <i className="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 pointer-events-none"></i>
+                  </div>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={customTagInput}
+                      onChange={(e) => {
+                        setCustomTagInput(e.target.value);
+                        if (formErrors.tag) setFormErrors(prev => ({ ...prev, tag: undefined }));
+                      }}
+                      placeholder="Type new tag..."
+                      className={`flex-1 px-3 py-1.5 text-xs sm:text-sm rounded-lg border ${
+                        formErrors.tag ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
+                      } bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-1.5 focus:ring-indigo-500 transition-all`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomTag(false);
+                        setCustomTagInput('');
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors text-xs font-medium cursor-pointer"
+                      title="Select existing tag"
+                    >
+                      List
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex items-center text-[11px] text-slate-400 dark:text-slate-500">
+                  <i className="fa-solid fa-circle-info mr-1 text-indigo-400"></i>
+                  New tags are saved automatically for future reuse.
+                </div>
+              </div>
+              {formErrors.tag && <p className="text-[11px] text-rose-500 mt-0.5">{formErrors.tag}</p>}
+            </div>
+
+            {/* Save & Cancel Actions */}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsFormOpen(false)}
+                className="px-3 py-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-medium transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs shadow-xs transition-all flex items-center gap-1.5 transform active:scale-95 cursor-pointer"
+              >
+                <i className="fa-solid fa-floppy-disk text-[11px]"></i>
+                <span>Save Question</span>
+              </button>
+            </div>
+          </form>
         )}
       </div>
 
