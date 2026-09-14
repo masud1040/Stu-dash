@@ -17,6 +17,26 @@ export function isSpeechRecognitionSupported(): boolean {
   return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 }
 
+// Clean consecutive duplicate phrases/words (e.g. STT stutter glitches)
+export function cleanTranscriptDuplicates(text: string): string {
+  if (!text) return '';
+  
+  // Normalize whitespace
+  let cleaned = text.replace(/\s+/g, ' ').trim();
+  
+  // Remove immediate consecutive identical words (e.g., "আমি আমি আমি" -> "আমি", "বর্তমানে বর্তমানে" -> "বর্তমানে")
+  // Works across English and Unicode / Bengali characters
+  cleaned = cleaned.replace(/(\b[\p{L}\p{N}_-]+\b)(?:\s+\1\b)+/giu, '$1');
+  
+  // Also clean 2-word duplicate phrases (e.g., "আমি সাইফুল আমি সাইফুল" -> "আমি সাইফুল")
+  cleaned = cleaned.replace(/(\b[\p{L}\p{N}_-]+\s+[\p{L}\p{N}_-]+\b)(?:\s+\1\b)+/giu, '$1');
+
+  // Also clean 3-word duplicate phrases
+  cleaned = cleaned.replace(/(\b[\p{L}\p{N}_-]+\s+[\p{L}\p{N}_-]+\s+[\p{L}\p{N}_-]+\b)(?:\s+\1\b)+/giu, '$1');
+
+  return cleaned;
+}
+
 export function createSpeechRecognizer(
   language: string,
   handlers: SpeechRecognitionHandlers
@@ -31,41 +51,61 @@ export function createSpeechRecognizer(
 
   recognizer.continuous = true;
   recognizer.interimResults = true;
+  recognizer.maxAlternatives = 1;
 
   // Set recognition language
-  if (language === 'বাংলা') {
+  if (language === 'বাংলা' || language === 'bn' || language === 'bn-BD') {
     recognizer.lang = 'bn-BD';
   } else if (language === 'Banglish') {
-    // Banglish works best with en-US or bn-BD depending on user preference
-    recognizer.lang = 'en-US';
+    // For mixed speech in South Asia, bn-BD or en-IN/en-US can recognize mixed terms
+    recognizer.lang = 'bn-BD';
   } else {
     recognizer.lang = 'en-US';
   }
 
+  // Session-scoped state to track finalized text without repeats
+  let sessionFinalTranscript = '';
+
   recognizer.onstart = () => {
+    sessionFinalTranscript = '';
     handlers.onStart();
   };
 
   recognizer.onresult = (event: any) => {
-    let sessionFinal = '';
-    let sessionInterim = '';
+    let interimTranscript = '';
+    let newlyFinalized = '';
 
-    for (let i = 0; i < event.results.length; ++i) {
-      const res = event.results[i];
-      const text = res[0]?.transcript || '';
-      if (res.isFinal) {
-        sessionFinal += (sessionFinal ? ' ' : '') + text.trim();
+    // Loop ONLY over event.results starting from event.resultIndex to avoid repeating previous results!
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      const result = event.results[i];
+      const text = result[0]?.transcript || '';
+      
+      if (result.isFinal) {
+        newlyFinalized += (newlyFinalized ? ' ' : '') + text.trim();
       } else {
-        sessionInterim += (sessionInterim ? ' ' : '') + text.trim();
+        interimTranscript += (interimTranscript ? ' ' : '') + text.trim();
       }
     }
 
-    const currentText = [sessionFinal, sessionInterim].filter(Boolean).join(' ');
+    if (newlyFinalized) {
+      sessionFinalTranscript = sessionFinalTranscript
+        ? `${sessionFinalTranscript} ${newlyFinalized}`.trim()
+        : newlyFinalized.trim();
+    }
+
+    // Combine current finalized session text with latest interim transcript
+    const combined = [sessionFinalTranscript, interimTranscript]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    const cleanedCombined = cleanTranscriptDuplicates(combined);
+
     handlers.onResult(
-      currentText,
-      Boolean(sessionFinal),
-      sessionFinal,
-      sessionInterim
+      cleanedCombined,
+      Boolean(newlyFinalized),
+      cleanTranscriptDuplicates(sessionFinalTranscript),
+      interimTranscript
     );
   };
 
@@ -74,7 +114,8 @@ export function createSpeechRecognizer(
     if (event.error === 'not-allowed' || event.error === 'permission-denied') {
       errorMsg = 'Microphone permission was denied. Please allow microphone access in your browser or type your answer.';
     } else if (event.error === 'no-speech') {
-      errorMsg = 'No speech was detected. Please try speaking closer to your microphone or type your response.';
+      // no-speech is common during normal pauses; don't terminate or panic
+      return;
     } else if (event.error === 'audio-capture') {
       errorMsg = 'No microphone was found or microphone is busy.';
     } else if (event.error === 'network') {

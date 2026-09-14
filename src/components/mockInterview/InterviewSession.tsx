@@ -5,6 +5,7 @@ import {
   isSpeechRecognitionSupported,
   speakText,
   stopSpeaking,
+  cleanTranscriptDuplicates,
 } from '../../lib/speechUtils';
 import { correctTechnicalTerms } from '../../lib/technicalTermCorrector';
 import { areQuestionsSemanticallyDuplicate } from '../../lib/questionDeduplicator';
@@ -43,6 +44,9 @@ export const InterviewSession: React.FC<Props> = ({
   const [isRecording, setIsRecording] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const [isTypingMode, setIsTypingMode] = useState(false);
+  const [inputLanguage, setInputLanguage] = useState<string>(
+    config.language === 'বাংলা' ? 'বাংলা' : 'English'
+  );
 
   // Audio / Speech Synthesis state
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
@@ -175,19 +179,20 @@ export const InterviewSession: React.FC<Props> = ({
     const baseText = committedText.trim();
 
     try {
-      const recognizer = createSpeechRecognizer(config.language, {
+      const recognizer = createSpeechRecognizer(inputLanguage, {
         onStart: () => {
           setIsRecording(true);
           setPhase('recording');
         },
         onResult: (currentSessionText) => {
-          // Accumulate without erasing previous speech!
+          // Accumulate without erasing previous speech and prevent duplicate repetitions!
           const combined = baseText
             ? `${baseText} ${currentSessionText}`.trim()
             : currentSessionText.trim();
 
-          setCandidateAnswer(combined);
-          setRawSpokenTranscript(combined);
+          const cleaned = cleanTranscriptDuplicates(combined);
+          setCandidateAnswer(cleaned);
+          setRawSpokenTranscript(cleaned);
         },
         onError: (err) => {
           console.warn('Speech recognition error event:', err);
@@ -202,8 +207,9 @@ export const InterviewSession: React.FC<Props> = ({
           setPhase((p) => (p === 'recording' ? 'ready' : p));
           // Commit full accumulated text so resuming appends seamlessly
           setCandidateAnswer((latest) => {
-            setCommittedText(latest);
-            return latest;
+            const cleaned = cleanTranscriptDuplicates(latest);
+            setCommittedText(cleaned);
+            return cleaned;
           });
         },
       });
@@ -542,7 +548,7 @@ export const InterviewSession: React.FC<Props> = ({
         {/* CANDIDATE ANSWER SECTION (Before evaluation) */}
         {!currentEvaluation && (
           <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 sm:p-7 shadow-xs border border-slate-200/80 dark:border-slate-700/80 space-y-5">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className={`w-2.5 h-2.5 rounded-full ${isRecording ? 'bg-rose-500 animate-ping' : 'bg-emerald-500'}`}></span>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
@@ -550,13 +556,56 @@ export const InterviewSession: React.FC<Props> = ({
                 </h4>
               </div>
 
-              <button
-                onClick={() => setIsTypingMode(!isTypingMode)}
-                className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
-              >
-                <i className={`fa-solid ${isTypingMode ? 'fa-microphone' : 'fa-keyboard'}`}></i>
-                <span>{isTypingMode ? 'Switch to Voice Input' : 'Type / Edit Manually'}</span>
-              </button>
+              {/* Language Selector for Voice Input & Manual Switch */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-slate-100 dark:bg-slate-700/70 p-0.5 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-600">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputLanguage('বাংলা');
+                      if (isRecording) {
+                        stopRecording();
+                        setTimeout(() => startRecording(), 150);
+                      }
+                    }}
+                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
+                      inputLanguage === 'বাংলা'
+                        ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-bold shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600'
+                    }`}
+                    title="Speak in Bengali (বাংলা)"
+                  >
+                    🇧🇩 বাংলা
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputLanguage('English');
+                      if (isRecording) {
+                        stopRecording();
+                        setTimeout(() => startRecording(), 150);
+                      }
+                    }}
+                    className={`px-2 py-1 rounded-md transition-all cursor-pointer ${
+                      inputLanguage === 'English'
+                        ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 font-bold shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600'
+                    }`}
+                    title="Speak in English"
+                  >
+                    🇺🇸 English
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsTypingMode(!isTypingMode)}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer ml-1"
+                >
+                  <i className={`fa-solid ${isTypingMode ? 'fa-microphone' : 'fa-keyboard'}`}></i>
+                  <span className="hidden sm:inline">{isTypingMode ? 'Voice Mode' : 'Keyboard Edit'}</span>
+                </button>
+              </div>
             </div>
 
             {/* Error / Notice message */}
@@ -571,6 +620,37 @@ export const InterviewSession: React.FC<Props> = ({
                   className="text-amber-500 hover:text-amber-700 text-xs cursor-pointer"
                 >
                   <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            )}
+
+            {/* Active Voice Waveform Indicator when speaking */}
+            {isRecording && (
+              <div className="bg-gradient-to-r from-rose-50 to-indigo-50 dark:from-rose-950/40 dark:to-indigo-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl p-3.5 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-end gap-1 h-5">
+                    <span className="w-1 bg-rose-500 rounded-full animate-[bounce_0.8s_ease-in-out_infinite_0.1s] h-3"></span>
+                    <span className="w-1 bg-rose-500 rounded-full animate-[bounce_0.8s_ease-in-out_infinite_0.3s] h-5"></span>
+                    <span className="w-1 bg-rose-500 rounded-full animate-[bounce_0.8s_ease-in-out_infinite_0.2s] h-4"></span>
+                    <span className="w-1 bg-rose-500 rounded-full animate-[bounce_0.8s_ease-in-out_infinite_0.4s] h-2"></span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-rose-700 dark:text-rose-300">
+                      Listening in {inputLanguage === 'বাংলা' ? 'বাংলা (Bengali)' : 'English'}...
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Speak clearly into your microphone. Words are captured live.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={stopRecording}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <i className="fa-solid fa-check"></i>
+                  <span>Done</span>
                 </button>
               </div>
             )}
@@ -593,10 +673,10 @@ export const InterviewSession: React.FC<Props> = ({
                   onChange={handleManualTextChange}
                   placeholder={
                     isRecording
-                      ? "Listening to you... Words appear in real-time as you speak..."
+                      ? `Listening to your voice in ${inputLanguage}... Words appear in real-time as you speak...`
                       : isAiSpeaking
                       ? "Please wait while the AI finishes asking the question..."
-                      : "Click 'Start Speaking' or type your answer here. You can speak in English, বাংলা, or mixed Banglish..."
+                      : `Click 'Start Speaking' or type your answer here in ${inputLanguage}...`
                   }
                   rows={4}
                   className={`w-full p-4 rounded-xl text-sm transition-all focus:outline-hidden focus:ring-2 ${
@@ -609,7 +689,7 @@ export const InterviewSession: React.FC<Props> = ({
                 {isRecording && (
                   <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500 text-white text-[11px] font-bold shadow-xs">
                     <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
-                    <span>Recording Audio</span>
+                    <span>Recording ({inputLanguage})</span>
                   </div>
                 )}
               </div>
@@ -617,7 +697,9 @@ export const InterviewSession: React.FC<Props> = ({
               {/* Spoken Language Hint & Stats */}
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 dark:text-slate-500 px-1">
                 <div className="flex items-center gap-2">
-                  <span>Language: {config.language} (English, বাংলা, Banglish supported)</span>
+                  <span>Input Mode: {inputLanguage}</span>
+                  <span>•</span>
+                  <span>Real-time voice-to-text</span>
                 </div>
                 <span>{candidateAnswer.trim() ? `${candidateAnswer.trim().split(/\s+/).length} words` : '0 words'}</span>
               </div>
